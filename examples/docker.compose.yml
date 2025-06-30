@@ -1,0 +1,140 @@
+# examples/docker-compose.yml
+# Example Docker Compose setup with newsletter feature
+
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: directus
+      POSTGRES_USER: directus
+      POSTGRES_PASSWORD: directus_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups # For database backups
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U directus"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Directus CMS
+  directus:
+    image: directus/directus:11-latest
+    environment:
+      KEY: your-secret-key-here
+      SECRET: your-secret-here
+      DB_CLIENT: pg
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: directus
+      DB_USER: directus
+      DB_PASSWORD: directus_password
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: admin_password
+      
+      # Newsletter feature configuration
+      NUXT_SITE_URL: https://your-site.com
+      WEBHOOK_SECRET: your-webhook-secret
+      
+      # File storage (optional)
+      STORAGE_LOCATIONS: local
+      STORAGE_LOCAL_ROOT: ./uploads
+      
+      # Email configuration (optional - for Directus emails)
+      EMAIL_FROM: noreply@example.com
+      EMAIL_TRANSPORT: smtp
+      EMAIL_SMTP_HOST: smtp.sendgrid.net
+      EMAIL_SMTP_PORT: 587
+      EMAIL_SMTP_USER: apikey
+      EMAIL_SMTP_PASSWORD: ${SENDGRID_API_KEY}
+    volumes:
+      - directus_uploads:/directus/uploads
+      - ./extensions:/directus/extensions # For custom extensions
+    ports:
+      - "8055:8055"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8055/server/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nuxt.js Frontend
+  nuxt:
+    build:
+      context: ./nuxt-app
+      dockerfile: Dockerfile
+    environment:
+      # Newsletter feature environment variables
+      DIRECTUS_URL: http://directus:8055
+      DIRECTUS_WEBHOOK_SECRET: your-webhook-secret
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      SENDGRID_UNSUBSCRIBE_GROUP_ID: ${SENDGRID_UNSUBSCRIBE_GROUP_ID}
+      NUXT_SITE_URL: https://your-site.com
+      
+      # Other Nuxt configuration
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      directus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      # Mount server endpoints (for development)
+      - ./nuxt-app/server:/app/server
+      # Mount configuration files
+      - ./nuxt-app/nuxt.config.ts:/app/nuxt.config.ts
+
+  # Nginx Reverse Proxy (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro # SSL certificates
+    depends_on:
+      - directus
+      - nuxt
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (optional - for caching)
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  directus_uploads:
+  redis_data:
+
+networks:
+  default:
+    name: newsletter_network

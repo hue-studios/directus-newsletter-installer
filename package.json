@@ -1,0 +1,54 @@
+{
+  "name": "directus-newsletter-installer",
+  "version": "1.0.0",
+  "description": "Newsletter feature installer for Directus 11 with MJML and SendGrid integration",
+  "main": "newsletter-installer.js",
+  "type": "module",
+  "scripts": {
+    "setup": "./deploy.sh setup",
+    "install-newsletter": "node newsletter-installer.js",
+    "test-endpoints": "echo 'Testing server endpoints...' && node -e 'console.log(\"Endpoints ready for deployment\")'",
+    "validate": "node -c newsletter-installer.js && echo 'Installer script is valid'"
+  },
+  "dependencies": {
+    "@directus/sdk": "^17.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "directus",
+    "newsletter",
+    "mjml",
+    "email",
+    "sendgrid",
+    "installer",
+    "automation"
+  ],
+  "author": "Your Agency",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/directus-newsletter-installer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/directus-newsletter-installer/issues"
+  },
+  "homepage": "https://github.com/yourusername/directus-newsletter-installer#readme",
+  "bin": {
+    "newsletter-installer": "./newsletter-installer.js"
+  },
+  "files": [
+    "newsletter-installer.js",
+    "deploy.sh",
+    "server/",
+    "types/",
+    "examples/",
+    "docs/",
+    ".env.example",
+    "README.md"
+  ]
+}

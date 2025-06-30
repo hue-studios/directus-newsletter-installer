@@ -1,0 +1,276 @@
+{
+  "flow": {
+    "id": "newsletter-send-flow",
+    "name": "Send Newsletter",
+    "icon": "send",
+    "color": "#00D4AA",
+    "description": "Compiles MJML blocks and sends newsletter to selected mailing lists",
+    "status": "active",
+    "trigger": "manual",
+    "accountability": "all",
+    "options": {
+      "collections": ["newsletters"],
+      "location": "item",
+      "requireConfirmation": true,
+      "confirmationDescription": "This will send the newsletter to all selected mailing lists. Are you sure you want to continue?"
+    }
+  },
+  "operations": [
+    {
+      "id": "validate-newsletter",
+      "name": "Validate Newsletter",
+      "key": "validate_newsletter",
+      "type": "condition",
+      "position_x": 19,
+      "position_y": 1,
+      "options": {
+        "filter": {
+          "_and": [
+            {
+              "status": {
+                "_eq": "ready"
+              }
+            },
+            {
+              "blocks": {
+                "_nnull": true
+              }
+            },
+            {
+              "mailing_lists": {
+                "_nnull": true
+              }
+            },
+            {
+              "subject_line": {
+                "_nnull": true
+              }
+            }
+          ]
+        }
+      },
+      "resolve": "compile-mjml",
+      "reject": "log-validation-error"
+    },
+    {
+      "id": "log-validation-error",
+      "name": "Log Validation Error",
+      "key": "log_validation_error",
+      "type": "log",
+      "position_x": 19,
+      "position_y": 21,
+      "options": {
+        "level": "error",
+        "message": "Newsletter validation failed: Newsletter must be in 'ready' status with blocks, mailing lists, and subject line configured."
+      }
+    },
+    {
+      "id": "compile-mjml",
+      "name": "Compile MJML",
+      "key": "compile_mjml",
+      "type": "webhook",
+      "position_x": 39,
+      "position_y": 1,
+      "options": {
+        "method": "POST",
+        "url": "{{$env.NUXT_SITE_URL}}/api/newsletter/compile-mjml",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer {{$env.DIRECTUS_WEBHOOK_SECRET}}"
+        },
+        "body": {
+          "newsletter_id": "{{$trigger.body.keys[0]}}"
+        }
+      },
+      "resolve": "get-mailing-lists",
+      "reject": "log-compile-error"
+    },
+    {
+      "id": "log-compile-error",
+      "name": "Log Compile Error",
+      "key": "log_compile_error",
+      "type": "log",
+      "position_x": 39,
+      "position_y": 21,
+      "options": {
+        "level": "error",
+        "message": "MJML compilation failed: {{compile_mjml.$last.error}}"
+      }
+    },
+    {
+      "id": "get-mailing-lists",
+      "name": "Get Mailing Lists",
+      "key": "get_mailing_lists",
+      "type": "read",
+      "position_x": 59,
+      "position_y": 1,
+      "options": {
+        "collection": "newsletters",
+        "key": "{{$trigger.body.keys[0]}}",
+        "query": {
+          "fields": [
+            "id",
+            "title",
+            "mailing_lists.mailing_lists_id.id",
+            "mailing_lists.mailing_lists_id.name",
+            "mailing_lists.mailing_lists_id.subscribers.mailing_list_id.id",
+            "mailing_lists.mailing_lists_id.subscribers.mailing_list_id.email",
+            "mailing_lists.mailing_lists_id.subscribers.mailing_list_id.name"
+          ]
+        }
+      },
+      "resolve": "create-send-records"
+    },
+    {
+      "id": "create-send-records",
+      "name": "Create Send Records",
+      "key": "create_send_records",
+      "type": "create",
+      "position_x": 79,
+      "position_y": 1,
+      "options": {
+        "collection": "newsletter_sends",
+        "payload": [
+          {
+            "newsletter_id": "{{$trigger.body.keys[0]}}",
+            "mailing_list_id": "{{get_mailing_lists.mailing_lists.mailing_lists_id.id}}",
+            "status": "pending",
+            "total_recipients": "{{get_mailing_lists.mailing_lists.mailing_lists_id.subscribers.length}}"
+          }
+        ]
+      },
+      "resolve": "send-emails"
+    },
+    {
+      "id": "send-emails",
+      "name": "Send Emails",
+      "key": "send_emails",
+      "type": "webhook",
+      "position_x": 99,
+      "position_y": 1,
+      "options": {
+        "method": "POST",
+        "url": "{{$env.NUXT_SITE_URL}}/api/newsletter/send",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer {{$env.DIRECTUS_WEBHOOK_SECRET}}"
+        },
+        "body": {
+          "newsletter_id": "{{$trigger.body.keys[0]}}",
+          "send_record_id": "{{create_send_records.id}}"
+        }
+      },
+      "resolve": "update-newsletter-status",
+      "reject": "log-send-error"
+    },
+    {
+      "id": "log-send-error",
+      "name": "Log Send Error",
+      "key": "log_send_error",
+      "type": "log",
+      "position_x": 99,
+      "position_y": 21,
+      "options": {
+        "level": "error",
+        "message": "Email sending failed: {{send_emails.$last.error}}"
+      },
+      "resolve": "update-send-failed"
+    },
+    {
+      "id": "update-send-failed",
+      "name": "Update Send Failed",
+      "key": "update_send_failed",
+      "type": "update",
+      "position_x": 119,
+      "position_y": 21,
+      "options": {
+        "collection": "newsletter_sends",
+        "key": "{{create_send_records.id}}",
+        "payload": {
+          "status": "failed",
+          "error_log": "{{send_emails.$last.error}}"
+        }
+      }
+    },
+    {
+      "id": "update-newsletter-status",
+      "name": "Update Newsletter Status",
+      "key": "update_newsletter_status",
+      "type": "update",
+      "position_x": 119,
+      "position_y": 1,
+      "options": {
+        "collection": "newsletters",
+        "key": "{{$trigger.body.keys[0]}}",
+        "payload": {
+          "status": "sent"
+        }
+      },
+      "resolve": "log-success"
+    },
+    {
+      "id": "log-success",
+      "name": "Log Success",
+      "key": "log_success",
+      "type": "log",
+      "position_x": 139,
+      "position_y": 1,
+      "options": {
+        "level": "info",
+        "message": "Newsletter '{{get_mailing_lists.title}}' sent successfully to {{get_mailing_lists.mailing_lists.length}} mailing list(s)"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "from": "validate-newsletter",
+      "to": "compile-mjml",
+      "type": "resolve"
+    },
+    {
+      "from": "validate-newsletter",
+      "to": "log-validation-error",
+      "type": "reject"
+    },
+    {
+      "from": "compile-mjml",
+      "to": "get-mailing-lists",
+      "type": "resolve"
+    },
+    {
+      "from": "compile-mjml",
+      "to": "log-compile-error",
+      "type": "reject"
+    },
+    {
+      "from": "get-mailing-lists",
+      "to": "create-send-records",
+      "type": "resolve"
+    },
+    {
+      "from": "create-send-records",
+      "to": "send-emails",
+      "type": "resolve"
+    },
+    {
+      "from": "send-emails",
+      "to": "update-newsletter-status",
+      "type": "resolve"
+    },
+    {
+      "from": "send-emails",
+      "to": "log-send-error",
+      "type": "reject"
+    },
+    {
+      "from": "log-send-error",
+      "to": "update-send-failed",
+      "type": "resolve"
+    },
+    {
+      "from": "update-newsletter-status",
+      "to": "log-success",
+      "type": "resolve"
+    }
+  ]
+}
