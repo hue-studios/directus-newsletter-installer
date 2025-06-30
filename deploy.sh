@@ -13,8 +13,31 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default values
-DEPLOYMENT_DIR="/opt/newsletter-feature"
+DEPLOYMENT_DIR="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
 VERSION="1.0.0"
+
+# Check if we can write to the deployment directory
+check_permissions() {
+    local test_dir="$1"
+    local parent_dir=$(dirname "$test_dir")
+    
+    # If directory exists and is writable, use it
+    if [ -d "$test_dir" ] && [ -w "$test_dir" ]; then
+        return 0
+    fi
+    
+    # If parent directory is writable, we can create it
+    if [ -w "$parent_dir" ]; then
+        return 0
+    fi
+    
+    # Check if we're root
+    if [ "$EUID" -eq 0 ]; then
+        return 0
+    fi
+    
+    return 1
+}
 
 # Function to print colored output
 print_status() {
@@ -70,13 +93,47 @@ test_directus_connection() {
 
 # Function to create deployment directory
 setup_deployment_dir() {
-    print_status "Setting up deployment directory at $DEPLOYMENT_DIR..."
+    print_status "Setting up deployment directory..."
     
+    # Check if we can use the default directory
+    if ! check_permissions "$DEPLOYMENT_DIR"; then
+        print_warning "Cannot write to $DEPLOYMENT_DIR (permission denied)"
+        
+        # Try alternative directories
+        local alternatives=(
+            "$HOME/newsletter-feature"
+            "/tmp/newsletter-feature"
+            "$(pwd)/newsletter-feature"
+        )
+        
+        for alt_dir in "${alternatives[@]}"; do
+            if check_permissions "$alt_dir" || check_permissions "$(dirname "$alt_dir")"; then
+                print_status "Using alternative directory: $alt_dir"
+                DEPLOYMENT_DIR="$alt_dir"
+                break
+            fi
+        done
+        
+        # If still no writable directory found
+        if ! check_permissions "$DEPLOYMENT_DIR"; then
+            print_error "No writable directory found. Try one of these solutions:"
+            echo "1. Run with sudo: curl ... | sudo bash -s ..."
+            echo "2. Set custom directory: NEWSLETTER_DEPLOY_DIR=~/newsletter curl ... | bash -s ..."
+            echo "3. Create directory first: sudo mkdir -p /opt/newsletter-feature && sudo chown \$(whoami) /opt/newsletter-feature"
+            exit 1
+        fi
+    fi
+    
+    # Create directory if it doesn't exist
     if [ ! -d "$DEPLOYMENT_DIR" ]; then
-        mkdir -p "$DEPLOYMENT_DIR"
-        print_success "Created deployment directory"
+        if mkdir -p "$DEPLOYMENT_DIR"; then
+            print_success "Created deployment directory: $DEPLOYMENT_DIR"
+        else
+            print_error "Failed to create deployment directory: $DEPLOYMENT_DIR"
+            exit 1
+        fi
     else
-        print_warning "Deployment directory already exists"
+        print_success "Using existing deployment directory: $DEPLOYMENT_DIR"
     fi
     
     cd "$DEPLOYMENT_DIR"
@@ -1592,6 +1649,14 @@ main() {
     if [ "$NODE_VERSION" -lt 16 ]; then
         print_error "Node.js 16+ is required. Current version: $(node --version)"
         exit 1
+    fi
+
+    # Show permission info if not root
+    if [ "$EUID" -ne 0 ]; then
+        print_status "Running as non-root user. If you encounter permission errors:"
+        echo "  • Run with sudo: curl ... | sudo bash -s ..."
+        echo "  • Or set custom directory: NEWSLETTER_DEPLOY_DIR=~/newsletter curl ... | bash -s ..."
+        echo ""
     fi
 
     # Parse command line arguments
