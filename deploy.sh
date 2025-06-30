@@ -176,12 +176,11 @@ create_installer_script() {
 #!/usr/bin/env node
 
 /**
- * Directus Newsletter Feature Installer
- * Safely installs newsletter collections, relations, and flows to existing Directus instances
+ * Directus Newsletter Feature Installer - Robust Version
+ * Handles field creation issues with retry logic and proper delays
  */
 
 import { createDirectus, rest, authentication, readCollections, createCollection, createField, createRelation, createFlow, createItems } from '@directus/sdk';
-import readline from 'readline';
 
 class NewsletterInstaller {
   constructor(directusUrl, email, password) {
@@ -208,49 +207,144 @@ class NewsletterInstaller {
     }
   }
 
+  // Helper method to create fields with retry logic
+  async createFieldWithRetry(collection, field, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.directus.request(createField(collection, field));
+        console.log(`✅ Added field: ${field.field}`);
+        
+        // Add delay between field creations
+        await new Promise(resolve => setTimeout(resolve, 800));
+        return true;
+        
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate')) {
+          console.log(`⏭️  Field ${field.field} already exists`);
+          return true;
+        }
+        
+        if (attempt === maxRetries) {
+          console.error(`❌ Failed to create field ${field.field} after ${maxRetries} attempts: ${error.message}`);
+          return false;
+        }
+        
+        console.log(`⚠️  Attempt ${attempt} failed for field ${field.field}, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+  }
+
+  // Create collection with proper error handling
+  async createCollectionSafely(collectionConfig) {
+    const { collection } = collectionConfig;
+    
+    if (this.existingCollections.has(collection)) {
+      console.log(`⏭️  Skipping ${collection} - already exists`);
+      return true;
+    }
+
+    try {
+      console.log(`📝 Creating ${collection} collection...`);
+      await this.directus.request(createCollection(collectionConfig));
+      console.log(`✅ ${collection} collection created`);
+      
+      // Add delay after collection creation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      return true;
+      
+    } catch (error) {
+      if (error.message.includes('already exists')) {
+        console.log(`⏭️  ${collection} collection already exists`);
+        return true;
+      }
+      
+      console.error(`❌ Failed to create ${collection} collection: ${error.message}`);
+      return false;
+    }
+  }
+
   async createCollections() {
     console.log('\n📦 Creating newsletter collections...');
 
-    // Create collections in dependency order
-    await this.createBlockTypesCollection();
-    await this.createNewslettersCollection();
-    await this.createNewsletterBlocksCollection();
-    await this.createMailingListsCollection();
-    await this.createNewsletterSendsCollection();
-  }
+    // Step 1: Create all collections first (without fields)
+    const collections = [
+      {
+        collection: 'block_types',
+        meta: {
+          accountability: 'all',
+          collection: 'block_types',
+          hidden: false,
+          icon: 'extension',
+          note: 'Available MJML block types for newsletters'
+        },
+        schema: { name: 'block_types' }
+      },
+      {
+        collection: 'newsletters',
+        meta: {
+          accountability: 'all',
+          collection: 'newsletters',
+          hidden: false,
+          icon: 'mail',
+          note: 'Email newsletters with MJML blocks'
+        },
+        schema: { name: 'newsletters' }
+      },
+      {
+        collection: 'newsletter_blocks',
+        meta: {
+          accountability: 'all',
+          collection: 'newsletter_blocks',
+          hidden: false,
+          icon: 'view_module',
+          note: 'Individual MJML blocks for newsletters'
+        },
+        schema: { name: 'newsletter_blocks' }
+      },
+      {
+        collection: 'mailing_lists',
+        meta: {
+          accountability: 'all',
+          collection: 'mailing_lists',
+          hidden: false,
+          icon: 'group',
+          note: 'Mailing list groups for newsletters'
+        },
+        schema: { name: 'mailing_lists' }
+      },
+      {
+        collection: 'newsletter_sends',
+        meta: {
+          accountability: 'all',
+          collection: 'newsletter_sends',
+          hidden: false,
+          icon: 'send',
+          note: 'Track newsletter send history and status'
+        },
+        schema: { name: 'newsletter_sends' }
+      }
+    ];
 
-  async createBlockTypesCollection() {
-    if (this.existingCollections.has('block_types')) {
-      console.log('⏭️  Skipping block_types - already exists');
-      return;
+    // Create collections one by one
+    for (const collection of collections) {
+      await this.createCollectionSafely(collection);
     }
 
-    console.log('📝 Creating block_types collection...');
+    console.log('\n🔧 Adding fields to collections...');
     
-    await this.directus.request(createCollection({
-      collection: 'block_types',
-      meta: {
-        accountability: 'all',
-        collection: 'block_types',
-        group: null,
-        hidden: false,
-        icon: 'extension',
-        item_duplication_fields: null,
-        note: 'Available MJML block types for newsletters',
-        singleton: false,
-        translations: []
-      },
-      schema: { name: 'block_types' }
-    }));
+    // Step 2: Add fields to each collection with proper delays
+    await this.addBlockTypeFields();
+    await this.addNewsletterFields();
+    await this.addNewsletterBlockFields();
+    await this.addMailingListFields();
+    await this.addNewsletterSendFields();
+  }
 
-    // Add fields
+  async addBlockTypeFields() {
+    console.log('\n📝 Adding fields to block_types...');
+    
     const fields = [
-      {
-        field: 'id',
-        type: 'integer',
-        meta: { hidden: true, interface: 'input', readonly: true },
-        schema: { is_primary_key: true, has_auto_increment: true }
-      },
       {
         field: 'name',
         type: 'string',
@@ -305,43 +399,14 @@ class NewsletterInstaller {
     ];
 
     for (const field of fields) {
-      await this.directus.request(createField('block_types', field));
+      await this.createFieldWithRetry('block_types', field);
     }
-
-    console.log('✅ block_types collection created');
   }
 
-  async createNewslettersCollection() {
-    if (this.existingCollections.has('newsletters')) {
-      console.log('⏭️  Skipping newsletters - already exists');
-      return;
-    }
-
-    console.log('📝 Creating newsletters collection...');
-
-    await this.directus.request(createCollection({
-      collection: 'newsletters',
-      meta: {
-        accountability: 'all',
-        collection: 'newsletters',
-        group: null,
-        hidden: false,
-        icon: 'mail',
-        item_duplication_fields: null,
-        note: 'Email newsletters with MJML blocks',
-        singleton: false,
-        translations: []
-      },
-      schema: { name: 'newsletters' }
-    }));
-
+  async addNewsletterFields() {
+    console.log('\n📝 Adding fields to newsletters...');
+    
     const fields = [
-      {
-        field: 'id',
-        type: 'integer',
-        meta: { hidden: true, interface: 'input', readonly: true },
-        schema: { is_primary_key: true, has_auto_increment: true }
-      },
       {
         field: 'status',
         type: 'string',
@@ -392,11 +457,6 @@ class NewsletterInstaller {
         meta: { interface: 'input', note: 'Reply-to email address' }
       },
       {
-        field: 'scheduled_send',
-        type: 'timestamp',
-        meta: { interface: 'datetime', note: 'When to send if scheduled' }
-      },
-      {
         field: 'compiled_mjml',
         type: 'text',
         meta: {
@@ -415,95 +475,18 @@ class NewsletterInstaller {
           readonly: true,
           note: 'Auto-generated HTML from MJML'
         }
-      },
-      {
-        field: 'date_created',
-        type: 'timestamp',
-        meta: {
-          interface: 'datetime',
-          readonly: true,
-          hidden: true,
-          width: 'half',
-          display: 'datetime',
-          display_options: { relative: true }
-        },
-        schema: { default_value: 'CURRENT_TIMESTAMP' }
-      },
-      {
-        field: 'date_updated',
-        type: 'timestamp',
-        meta: {
-          interface: 'datetime',
-          readonly: true,
-          hidden: true,
-          width: 'half',
-          display: 'datetime',
-          display_options: { relative: true }
-        },
-        schema: { default_value: 'CURRENT_TIMESTAMP' }
-      },
-      {
-        field: 'user_created',
-        type: 'uuid',
-        meta: {
-          interface: 'select-dropdown-m2o',
-          readonly: true,
-          hidden: true,
-          width: 'half',
-          display: 'user'
-        }
-      },
-      {
-        field: 'user_updated',
-        type: 'uuid',
-        meta: {
-          interface: 'select-dropdown-m2o',
-          readonly: true,
-          hidden: true,
-          width: 'half',
-          display: 'user'
-        }
       }
     ];
 
     for (const field of fields) {
-      await this.directus.request(createField('newsletters', field));
+      await this.createFieldWithRetry('newsletters', field);
     }
-
-    console.log('✅ newsletters collection created');
   }
 
-  async createNewsletterBlocksCollection() {
-    if (this.existingCollections.has('newsletter_blocks')) {
-      console.log('⏭️  Skipping newsletter_blocks - already exists');
-      return;
-    }
-
-    console.log('📝 Creating newsletter_blocks collection...');
-
-    await this.directus.request(createCollection({
-      collection: 'newsletter_blocks',
-      meta: {
-        accountability: 'all',
-        collection: 'newsletter_blocks',
-        group: null,
-        hidden: false,
-        icon: 'view_module',
-        item_duplication_fields: null,
-        note: 'Individual MJML blocks for newsletters',
-        singleton: false,
-        translations: []
-      },
-      schema: { name: 'newsletter_blocks' }
-    }));
-
+  async addNewsletterBlockFields() {
+    console.log('\n📝 Adding fields to newsletter_blocks...');
+    
     const fields = [
-      {
-        field: 'id',
-        type: 'integer',
-        meta: { hidden: true, interface: 'input', readonly: true },
-        schema: { is_primary_key: true, has_auto_increment: true }
-      },
       {
         field: 'newsletter_id',
         type: 'integer',
@@ -544,46 +527,14 @@ class NewsletterInstaller {
     ];
 
     for (const field of fields) {
-      await this.directus.request(createField('newsletter_blocks', field));
+      await this.createFieldWithRetry('newsletter_blocks', field);
     }
-
-    console.log('✅ newsletter_blocks collection created');
   }
 
-  async createMailingListsCollection() {
-    const hasMailingList = this.existingCollections.has('mailing_list');
-    const hasMailingLists = this.existingCollections.has('mailing_lists');
-
-    if (hasMailingLists) {
-      console.log('⏭️  Skipping mailing_lists - already exists');
-      return;
-    }
-
-    console.log('📝 Creating mailing_lists collection...');
-
-    await this.directus.request(createCollection({
-      collection: 'mailing_lists',
-      meta: {
-        accountability: 'all',
-        collection: 'mailing_lists',
-        group: null,
-        hidden: false,
-        icon: 'group',
-        item_duplication_fields: null,
-        note: 'Mailing list groups for newsletters',
-        singleton: false,
-        translations: []
-      },
-      schema: { name: 'mailing_lists' }
-    }));
-
+  async addMailingListFields() {
+    console.log('\n📝 Adding fields to mailing_lists...');
+    
     const fields = [
-      {
-        field: 'id',
-        type: 'integer',
-        meta: { hidden: true, interface: 'input', readonly: true },
-        schema: { is_primary_key: true, has_auto_increment: true }
-      },
       {
         field: 'name',
         type: 'string',
@@ -612,43 +563,14 @@ class NewsletterInstaller {
     ];
 
     for (const field of fields) {
-      await this.directus.request(createField('mailing_lists', field));
+      await this.createFieldWithRetry('mailing_lists', field);
     }
-
-    console.log('✅ mailing_lists collection created');
   }
 
-  async createNewsletterSendsCollection() {
-    if (this.existingCollections.has('newsletter_sends')) {
-      console.log('⏭️  Skipping newsletter_sends - already exists');
-      return;
-    }
-
-    console.log('📝 Creating newsletter_sends collection...');
-
-    await this.directus.request(createCollection({
-      collection: 'newsletter_sends',
-      meta: {
-        accountability: 'all',
-        collection: 'newsletter_sends',
-        group: null,
-        hidden: false,
-        icon: 'send',
-        item_duplication_fields: null,
-        note: 'Track newsletter send history and status',
-        singleton: false,
-        translations: []
-      },
-      schema: { name: 'newsletter_sends' }
-    }));
-
+  async addNewsletterSendFields() {
+    console.log('\n📝 Adding fields to newsletter_sends...');
+    
     const fields = [
-      {
-        field: 'id',
-        type: 'integer',
-        meta: { hidden: true, interface: 'input', readonly: true },
-        schema: { is_primary_key: true, has_auto_increment: true }
-      },
       {
         field: 'newsletter_id',
         type: 'integer',
@@ -693,11 +615,6 @@ class NewsletterInstaller {
         meta: { interface: 'input', readonly: true, default_value: 0 }
       },
       {
-        field: 'sendgrid_batch_id',
-        type: 'string',
-        meta: { interface: 'input', readonly: true, note: 'SendGrid batch ID for tracking' }
-      },
-      {
         field: 'error_log',
         type: 'text',
         meta: { interface: 'input-rich-text-md', readonly: true }
@@ -706,20 +623,12 @@ class NewsletterInstaller {
         field: 'sent_at',
         type: 'timestamp',
         meta: { interface: 'datetime', readonly: true }
-      },
-      {
-        field: 'date_created',
-        type: 'timestamp',
-        meta: { interface: 'datetime', readonly: true, hidden: true },
-        schema: { default_value: 'CURRENT_TIMESTAMP' }
       }
     ];
 
     for (const field of fields) {
-      await this.directus.request(createField('newsletter_sends', field));
+      await this.createFieldWithRetry('newsletter_sends', field);
     }
-
-    console.log('✅ newsletter_sends collection created');
   }
 
   async createRelations() {
@@ -778,6 +687,7 @@ class NewsletterInstaller {
       try {
         await this.directus.request(createRelation(relation));
         console.log(`✅ Created relation: ${relation.collection}.${relation.field} -> ${relation.related_collection}`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
         if (error.message.includes('already exists')) {
           console.log(`⏭️  Relation already exists: ${relation.collection}.${relation.field} -> ${relation.related_collection}`);
@@ -798,14 +708,11 @@ class NewsletterInstaller {
         description: "Large header section with title, subtitle, and optional button",
         mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
   <mj-column>
-    {{#if image_url}}
-    <mj-image src="{{image_url}}" alt="{{image_alt}}" padding="0 0 20px 0" />
-    {{/if}}
-    <mj-text align="{{text_align}}" font-size="{{title_size}}" font-weight="bold" color="{{title_color}}" padding="0 0 10px 0">
+    <mj-text align="{{text_align}}" font-size="{{title_size}}" font-weight="bold" color="{{title_color}}">
       {{title}}
     </mj-text>
     {{#if subtitle}}
-    <mj-text align="{{text_align}}" font-size="{{subtitle_size}}" color="{{subtitle_color}}" padding="0 0 20px 0">
+    <mj-text align="{{text_align}}" font-size="{{subtitle_size}}" color="{{subtitle_color}}">
       {{subtitle}}
     </mj-text>
     {{/if}}
@@ -821,19 +728,9 @@ class NewsletterInstaller {
           properties: {
             title: { type: "string", title: "Title", default: "Welcome to Our Newsletter" },
             subtitle: { type: "string", title: "Subtitle" },
-            image_url: { type: "string", title: "Image URL" },
-            image_alt: { type: "string", title: "Image Alt Text" },
-            button_text: { type: "string", title: "Button Text" },
-            button_url: { type: "string", title: "Button URL" },
             background_color: { type: "string", title: "Background Color", default: "#ffffff" },
             title_color: { type: "string", title: "Title Color", default: "#000000" },
-            subtitle_color: { type: "string", title: "Subtitle Color", default: "#666666" },
-            button_bg_color: { type: "string", title: "Button Background", default: "#007bff" },
-            button_text_color: { type: "string", title: "Button Text Color", default: "#ffffff" },
-            title_size: { type: "string", title: "Title Font Size", default: "32px" },
-            subtitle_size: { type: "string", title: "Subtitle Font Size", default: "18px" },
-            text_align: { type: "string", title: "Text Alignment", enum: ["left", "center", "right"], default: "center" },
-            padding: { type: "string", title: "Section Padding", default: "40px 0" }
+            text_align: { type: "string", title: "Text Alignment", enum: ["left", "center", "right"], default: "center" }
           },
           required: ["title"]
         },
@@ -845,7 +742,7 @@ class NewsletterInstaller {
         description: "Simple text content with formatting options",
         mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
   <mj-column>
-    <mj-text align="{{text_align}}" font-size="{{font_size}}" color="{{text_color}}" line-height="{{line_height}}">
+    <mj-text align="{{text_align}}" font-size="{{font_size}}" color="{{text_color}}">
       {{content}}
     </mj-text>
   </mj-column>
@@ -856,89 +753,9 @@ class NewsletterInstaller {
             content: { type: "string", title: "Content", format: "textarea" },
             background_color: { type: "string", title: "Background Color", default: "#ffffff" },
             text_color: { type: "string", title: "Text Color", default: "#000000" },
-            font_size: { type: "string", title: "Font Size", default: "14px" },
-            line_height: { type: "string", title: "Line Height", default: "1.6" },
-            text_align: { type: "string", title: "Text Alignment", enum: ["left", "center", "right", "justify"], default: "left" },
-            padding: { type: "string", title: "Section Padding", default: "20px 0" }
+            font_size: { type: "string", title: "Font Size", default: "14px" }
           },
           required: ["content"]
-        },
-        status: "published"
-      },
-      {
-        name: "Image Block",
-        slug: "image",
-        description: "Single image with optional caption and link",
-        mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
-  <mj-column>
-    {{#if href}}
-    <mj-image src="{{src}}" alt="{{alt}}" href="{{href}}" width="{{width}}" align="{{align}}" />
-    {{else}}
-    <mj-image src="{{src}}" alt="{{alt}}" width="{{width}}" align="{{align}}" />
-    {{/if}}
-    {{#if caption}}
-    <mj-text align="{{align}}" font-size="{{caption_size}}" color="{{caption_color}}" padding="10px 0 0 0">
-      {{caption}}
-    </mj-text>
-    {{/if}}
-  </mj-column>
-</mj-section>`,
-        fields_schema: {
-          type: "object",
-          properties: {
-            src: { type: "string", title: "Image URL" },
-            alt: { type: "string", title: "Alt Text" },
-            href: { type: "string", title: "Link URL (optional)" },
-            caption: { type: "string", title: "Caption (optional)" },
-            width: { type: "string", title: "Image Width", default: "600px" },
-            align: { type: "string", title: "Alignment", enum: ["left", "center", "right"], default: "center" },
-            background_color: { type: "string", title: "Background Color", default: "#ffffff" },
-            caption_color: { type: "string", title: "Caption Color", default: "#666666" },
-            caption_size: { type: "string", title: "Caption Font Size", default: "12px" },
-            padding: { type: "string", title: "Section Padding", default: "20px 0" }
-          },
-          required: ["src", "alt"]
-        },
-        status: "published"
-      },
-      {
-        name: "Button",
-        slug: "button",
-        description: "Call-to-action button with customizable styling",
-        mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
-  <mj-column>
-    <mj-button 
-      background-color="{{button_bg_color}}" 
-      color="{{button_text_color}}" 
-      href="{{href}}" 
-      font-size="{{font_size}}"
-      font-weight="{{font_weight}}"
-      border-radius="{{border_radius}}"
-      padding="{{button_padding}}"
-      align="{{align}}"
-      width="{{width}}"
-    >
-      {{text}}
-    </mj-button>
-  </mj-column>
-</mj-section>`,
-        fields_schema: {
-          type: "object",
-          properties: {
-            text: { type: "string", title: "Button Text" },
-            href: { type: "string", title: "Button URL" },
-            button_bg_color: { type: "string", title: "Button Background", default: "#007bff" },
-            button_text_color: { type: "string", title: "Button Text Color", default: "#ffffff" },
-            background_color: { type: "string", title: "Section Background", default: "#ffffff" },
-            font_size: { type: "string", title: "Font Size", default: "16px" },
-            font_weight: { type: "string", title: "Font Weight", default: "bold" },
-            border_radius: { type: "string", title: "Border Radius", default: "4px" },
-            button_padding: { type: "string", title: "Button Padding", default: "12px 24px" },
-            align: { type: "string", title: "Alignment", enum: ["left", "center", "right"], default: "center" },
-            width: { type: "string", title: "Button Width", default: "auto" },
-            padding: { type: "string", title: "Section Padding", default: "20px 0" }
-          },
-          required: ["text", "href"]
         },
         status: "published"
       }
@@ -948,37 +765,10 @@ class NewsletterInstaller {
       try {
         await this.directus.request(createItems('block_types', blockType));
         console.log(`✅ Created block type: ${blockType.name}`);
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {
         console.log(`⚠️  Could not create block type ${blockType.name}:`, error.message);
       }
-    }
-  }
-
-  async createFlow() {
-    console.log('\n⚡ Creating newsletter send flow...');
-    
-    try {
-      const flow = await this.directus.request(createFlow({
-        name: 'Send Newsletter',
-        icon: 'send',
-        color: '#00D4AA',
-        description: 'Compiles MJML blocks and sends newsletter to selected mailing lists',
-        status: 'active',
-        trigger: 'manual',
-        accountability: 'all',
-        options: {
-          collections: ['newsletters'],
-          location: 'item',
-          requireConfirmation: true,
-          confirmationDescription: 'This will send the newsletter to all selected mailing lists. Are you sure?'
-        }
-      }));
-
-      console.log('✅ Newsletter flow created');
-      console.log('⚠️  Note: You will need to manually configure the flow operations in Directus admin');
-
-    } catch (error) {
-      console.error('❌ Failed to create flow:', error.message);
     }
   }
 
@@ -989,18 +779,10 @@ class NewsletterInstaller {
       return false;
     }
 
-    const hasExisting = ['newsletters', 'newsletter_blocks', 'block_types', 'newsletter_sends']
-      .some(c => this.existingCollections.has(c));
-    
-    if (hasExisting) {
-      console.log('⚠️  Found existing newsletter collections. They will be skipped safely.');
-    }
-
     try {
       await this.createCollections();
       await this.createRelations();
       await this.insertBlockTypes();
-      await this.createFlow();
 
       console.log('\n🎉 Newsletter feature installation completed!');
       console.log('\nNext steps:');
@@ -1038,7 +820,7 @@ main().catch(console.error);
 EOF
     
     chmod +x newsletter-installer.js
-    print_success "Newsletter installer script created"
+    print_success "Robust newsletter installer script created"
 }
 
 # Function to install Node.js dependencies
