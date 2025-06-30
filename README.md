@@ -21,14 +21,14 @@ A complete newsletter system for Directus 11 with MJML email templates and SendG
 
 ```bash
 # Download and install directly
-curl -fsSL https://raw.githubusercontent.com/yourusername/directus-newsletter-installer/main/deploy.sh | bash -s full https://your-directus-url.com admin@example.com your-password
+curl -fsSL https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/deploy.sh | bash -s full https://your-directus-url.com admin@example.com your-password
 ```
 
 ### Manual Installation
 
 ```bash
 # 1. Clone or download
-git clone https://github.com/yourusername/directus-newsletter-installer.git
+git clone https://github.com/hue-studios/directus-newsletter-installer.git
 cd directus-newsletter-installer
 
 # 2. Set up installation files
@@ -81,7 +81,7 @@ Choose your installation method:
 ssh root@your-droplet-ip
 
 # Download and run installer
-wget https://raw.githubusercontent.com/yourusername/directus-newsletter-installer/main/deploy.sh
+wget https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/deploy.sh
 chmod +x deploy.sh
 ./deploy.sh full https://your-directus-url.com admin@example.com password
 ```
@@ -263,7 +263,7 @@ echo "SENDGRID_API_KEY=client-sendgrid-key" >> /path/to/client/.env
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/directus-newsletter-installer.git
+git clone https://github.com/hue-studios/directus-newsletter-installer.git
 cd directus-newsletter-installer
 
 # Install dependencies
@@ -333,7 +333,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🤝 Support
 
 - 📧 Email: support@youragency.com
-- 💬 Issues: [GitHub Issues](https://github.com/yourusername/directus-newsletter-installer/issues)
+- 💬 Issues: [GitHub Issues](https://github.com/hue-studios/directus-newsletter-installer/issues)
 - 📖 Docs: [Documentation](docs/)
 
 ## 🙏 Acknowledgments

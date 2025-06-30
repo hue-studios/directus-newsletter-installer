@@ -21,7 +21,7 @@ The fastest way to install the newsletter feature:
 
 ```bash
 # Download and install directly
-curl -fsSL https://raw.githubusercontent.com/yourusername/directus-newsletter-installer/main/deploy.sh | bash -s full https://your-directus-url.com admin@example.com your-password
+curl -fsSL https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/deploy.sh | bash -s full https://your-directus-url.com admin@example.com your-password
 ```
 
 ### Method 2: Manual Installation
@@ -30,7 +30,7 @@ For more control over the installation process:
 
 ```bash
 # 1. Download the installer
-git clone https://github.com/yourusername/directus-newsletter-installer.git
+git clone https://github.com/hue-studios/directus-newsletter-installer.git
 cd directus-newsletter-installer
 
 # 2. Set up installation files
@@ -80,7 +80,7 @@ docker exec mysql-container mysqldump -u directus -p directus > backup.sql
 ssh root@your-droplet-ip
 
 # Download installer
-wget https://raw.githubusercontent.com/yourusername/directus-newsletter-installer/main/deploy.sh
+wget https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/deploy.sh
 chmod +x deploy.sh
 
 # Run installation
@@ -108,7 +108,7 @@ EOF
 npm install
 
 # Download and run installer
-curl -o newsletter-installer.js https://raw.githubusercontent.com/yourusername/directus-newsletter-installer/main/newsletter-installer.js
+curl -o newsletter-installer.js https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/newsletter-installer.js
 node newsletter-installer.js https://your-directus-url.com admin@example.com password
 ```
 
@@ -130,8 +130,8 @@ cp -r /opt/newsletter-installation/server/ ./server/
 
 # Or download directly
 mkdir -p server/api/newsletter
-curl -o server/api/newsletter/compile-mjml.post.ts https://raw.githubusercontent.com/yourusername/directus-newsletter-installer/main/server/api/newsletter/compile-mjml.post.ts
-curl -o server/api/newsletter/send.post.ts https://raw.githubusercontent.com/yourusername/directus-newsletter-installer/main/server/api/newsletter/send.post.ts
+curl -o server/api/newsletter/compile-mjml.post.ts https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/server/api/newsletter/compile-mjml.post.ts
+curl -o server/api/newsletter/send.post.ts https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/server/api/newsletter/send.post.ts
 ```
 
 #### Update Nuxt Configuration

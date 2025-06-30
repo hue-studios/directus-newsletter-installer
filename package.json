@@ -28,16 +28,16 @@
     "installer",
     "automation"
   ],
-  "author": "Your Agency",
+  "author": "hue",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/directus-newsletter-installer.git"
+    "url": "https://github.com/hue-studios/directus-newsletter-installer.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/directus-newsletter-installer/issues"
+    "url": "https://github.com/hue-studios/directus-newsletter-installer/issues"
   },
-  "homepage": "https://github.com/yourusername/directus-newsletter-installer#readme",
+  "homepage": "https://github.com/hue-studios/directus-newsletter-installer#readme",
   "bin": {
     "newsletter-installer": "./newsletter-installer.js"
   },

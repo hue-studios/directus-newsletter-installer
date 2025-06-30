@@ -541,7 +541,7 @@ docker-compose logs directus | tail -50 >> debug-report.txt
 ### Contact Support
 
 - 📧 **Email**: support@youragency.com
-- 🐛 **GitHub Issues**: [Create Issue](https://github.com/yourusername/directus-newsletter-installer/issues)
+- 🐛 **GitHub Issues**: [Create Issue](https://github.com/hue-studios/directus-newsletter-installer/issues)
 - 📖 **Documentation**: [Installation Guide](INSTALLATION.md)
 
 Include your debug report and specific error messages for faster resolution.

@@ -15,7 +15,7 @@ Thank you for your interest in contributing! This project helps agencies and dev
 
 ```bash
 # 1. Fork and clone the repository
-git clone https://github.com/yourusername/directus-newsletter-installer.git
+git clone https://github.com/hue-studios/directus-newsletter-installer.git
 cd directus-newsletter-installer
 
 # 2. Install dependencies
@@ -287,8 +287,8 @@ Contributors are recognized in:
 ## Need Help?
 
 - 📖 **Documentation**: [Installation Guide](docs/INSTALLATION.md)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/yourusername/directus-newsletter-installer/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/yourusername/directus-newsletter-installer/discussions)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/hue-studios/directus-newsletter-installer/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/hue-studios/directus-newsletter-installer/discussions)
 - 📧 **Email**: support@youragency.com
 
 Thank you for contributing to make newsletter management better for the Directus community! 🚀
