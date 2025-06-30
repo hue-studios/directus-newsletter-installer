@@ -1,3 +1,95 @@
+async addNewsletterTemplateFields() {
+    console.log('\n📝 Adding fields to newsletter_templates...');
+    
+    const fields = [
+      {
+        field: 'name',
+        type: 'string',
+        meta: { interface: 'input', required: true, width: 'half' },
+        schema: { is_nullable: false }
+      },
+      {
+        field: 'description',
+        type: 'text',
+        meta: { interface: 'input', width: 'half' }
+      },
+      {
+        field: 'thumbnail',
+        type: 'uuid',
+        meta: { interface: 'file-image', width: 'half' }
+      },
+      {
+        field: 'category',
+        type: 'string',
+        meta: {
+          interface: 'select-dropdown',
+          options: {
+            choices: [
+              { text: 'Newsletter', value: 'newsletter' },
+              { text: 'Announcement', value: 'announcement' },
+              { text: 'Promotional', value: 'promotional' },
+              { text: 'Event', value: 'event' },
+              { text: 'Welcome', value: 'welcome' },
+              { text: 'Update', value: 'update' }
+            ]
+          },
+          default_value: 'newsletter',
+          width: 'half'
+        }
+      },
+      {
+        field: 'mjml_template',
+        type: 'text',
+        meta: {
+          interface: 'input-code',
+          options: { language: 'xml' },
+          note: 'Complete MJML template with placeholders'
+        },
+        schema: { is_nullable: false }
+      },
+      {
+        field: 'preview_html',
+        type: 'text',
+        meta: {
+          interface: 'input-code',
+          options: { language: 'htmlmixed' },
+          readonly: true,
+          note: 'Generated preview HTML'
+        }
+      },
+      {
+        field: 'status',
+        type: 'string',
+        meta: {
+          interface: 'select-dropdown',
+          options: {
+            choices: [
+              { text: 'Published', value: 'published' },
+              { text: 'Draft', value: 'draft' },
+              { text: 'Archived', value: 'archived' }
+            ]
+          },
+          default_value: 'published'
+        }
+      },
+      {
+        field: 'newsletters',
+        type: 'alias',
+        meta: {
+          interface: 'list-o2m',
+          special: ['o2m'],
+          options: {
+            template: '{{title}} - {{status}}'
+          }
+        }
+      }
+    ];
+
+    for (const field of fields) {
+      await this.createFieldWithRetry('newsletter_templates', field);
+    }
+  }
+
 #!/bin/bash
 
 # Directus Newsletter Feature - Deployment Script
@@ -281,6 +373,17 @@ class NewsletterInstaller {
         schema: { name: 'block_types' }
       },
       {
+        collection: 'newsletter_templates',
+        meta: {
+          accountability: 'all',
+          collection: 'newsletter_templates',
+          hidden: false,
+          icon: 'file_copy',
+          note: 'Reusable newsletter templates'
+        },
+        schema: { name: 'newsletter_templates' }
+      },
+      {
         collection: 'newsletters',
         meta: {
           accountability: 'all',
@@ -335,6 +438,7 @@ class NewsletterInstaller {
     
     // Step 2: Add fields to each collection with proper delays
     await this.addBlockTypeFields();
+    await this.addNewsletterTemplateFields();
     await this.addNewsletterFields();
     await this.addNewsletterBlockFields();
     await this.addMailingListFields();
@@ -406,6 +510,17 @@ class NewsletterInstaller {
             template: '{{newsletter_id.title}} - Block {{sort}}'
           }
         }
+      },
+      {
+        field: 'newsletters',
+        type: 'alias',
+        meta: {
+          interface: 'list-o2m',
+          special: ['o2m'],
+          options: {
+            template: '{{title}} - {{status}}'
+          }
+        }
       }
     ];
 
@@ -433,6 +548,24 @@ class NewsletterInstaller {
           },
           default_value: 'draft',
           width: 'half'
+        }
+      },
+      {
+        field: 'template_id',
+        type: 'integer',
+        meta: { 
+          interface: 'select-dropdown-m2o', 
+          width: 'half',
+          special: ['m2o'],
+          options: {
+            template: '{{name}}'
+          },
+          note: 'Optional: Use a predefined template'
+        },
+        schema: { 
+          is_nullable: true,
+          foreign_key_table: 'newsletter_templates',
+          foreign_key_column: 'id'
         }
       },
       {
@@ -746,6 +879,17 @@ class NewsletterInstaller {
           one_collection: 'mailing_lists',
           one_deselect_action: 'nullify'
         }
+      },
+      {
+        collection: 'newsletters',
+        field: 'template_id',
+        related_collection: 'newsletter_templates',
+        meta: {
+          many_collection: 'newsletters',
+          many_field: 'template_id',
+          one_collection: 'newsletter_templates',
+          one_deselect_action: 'nullify'
+        }
       }
     ];
 
@@ -880,11 +1024,17 @@ class NewsletterInstaller {
       await this.insertBlockTypes();
 
       console.log('\n🎉 Newsletter feature installation completed!');
+      console.log('\n📦 What was installed:');
+      console.log('   • 5 Collections: newsletters, newsletter_blocks, block_types, newsletter_templates, mailing_lists');
+      console.log('   • 8 MJML Block Types: Hero, Text, Button, Image, Social, Divider, Spacer, Two Columns');
+      console.log('   • 3 Newsletter Templates: Simple Newsletter, Welcome Email, Product Announcement');
+      console.log('   • Complete M2O/O2M relationships');
       console.log('\nNext steps:');
       console.log('1. Copy the Nuxt server endpoints to your project');
       console.log('2. Configure environment variables');  
       console.log('3. Set up the flow operations in Directus admin');
-      console.log('4. Test with a sample newsletter');
+      console.log('4. Test with a sample newsletter using a template');
+      console.log('5. Explore the comprehensive block library!');
       
       return true;
     } catch (error) {
