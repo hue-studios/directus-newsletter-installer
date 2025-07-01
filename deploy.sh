@@ -69,7 +69,7 @@ create_package_json() {
     "@sendgrid/mail": "^8.1.3"
   },
   "devDependencies": {
-    "@types/mjml": "^4.7.5"
+    "@types/mjml": "^4.7.4"
   },
   "engines": {
     "node": ">=16.0.0"
