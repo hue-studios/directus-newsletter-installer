@@ -2330,4 +2330,5 @@ To make the `newsletter_blocks` fields dynamic based on the selected `block_type
       height: 38px; /* Adjust as needed */
     }
     </style>
+main().catch(console.error);
 EOF
