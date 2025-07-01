@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# Directus Newsletter Feature - Updated Deployment Script v3.4
+# Directus Newsletter Feature - Updated Deployment Script v3.5
 # Uses the Complete Newsletter Installer with Automated Directus Flow Creation
 # NEW: Adds a URL slug for newsletter previews.
 # NEW: Adds field_visibility_config to block_types for dynamic frontend rendering.
 # FIX: Explicitly attempts to add 'blocks' field to 'newsletters' collection for relationship.
+# FIX: Corrected flow operation type from 'webhook' to 'request'.
 
 set -e
 
@@ -15,7 +16,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-VERSION="3.4.0" # Updated version to reflect relationship fix
+VERSION="3.5.0" # Updated version to reflect flow operation type fix
 DEPLOYMENT_DIR="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
 
 print_status() {
@@ -61,7 +62,7 @@ create_package_json() {
     cat > package.json << 'EOF'
 {
   "name": "directus-newsletter-installer",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "type": "module",
   "description": "Complete Newsletter Feature Installer for Directus 11 with Automated Flow Creation, Preview Slugs, and Dynamic Field Metadata",
   "main": "newsletter-installer.js",
@@ -96,11 +97,12 @@ download_complete_installer() {
 #!/usr/bin/env node
 
 /**
- * Directus Newsletter Feature - Complete Installer with Automated Flow v3.4
+ * Directus Newsletter Feature - Complete Installer with Automated Flow v3.5
  * * NEW: Automatically creates the complete webhook flow!
  * * NEW: Adds a URL slug for newsletter previews.
  * * NEW: Adds field_visibility_config to block_types for dynamic frontend rendering.
  * * FIX: Ensures 'blocks' field is created on 'newsletters' collection.
+ * * FIX: Corrected flow operation type from 'webhook' to 'request'.
  */
 
 import { createDirectus, rest, authentication, readCollections, createCollection, createField, createRelation, createItems, createFlow, createOperation, updateItem } from '@directus/sdk';
@@ -928,11 +930,11 @@ class CompleteNewsletterInstaller {
   async createRelations() {
     console.log('\n🔗 Creating relationships...');
 
-    # Explicitly add the 'blocks' O2M field to 'newsletters' BEFORE creating the relationship
-    # This ensures the field exists before the relation attempts to link to it.
+    // Explicitly add the 'blocks' O2M field to 'newsletters' BEFORE creating the relationship
+    // This ensures the field exists before the relation attempts to link to it.
     await this.createFieldWithRetry('newsletters', {
       field: 'blocks',
-      type: 'alias', # Use alias type for O2M relation field
+      type: 'alias', // Use alias type for O2M relation field
       meta: {
         interface: 'list-o2m',
         options: {
@@ -941,11 +943,11 @@ class CompleteNewsletterInstaller {
         note: 'Blocks composing this newsletter'
       },
       schema: {
-        is_nullable: true # Can be null if no blocks
+        is_nullable: true // Can be null if no blocks
       }
     });
 
-    # First, add the M2O field to newsletters
+    // First, add the M2O field to newsletters
     try {
       await this.createFieldWithRetry('newsletters', {
         field: 'mailing_list_id',
@@ -962,7 +964,7 @@ class CompleteNewsletterInstaller {
     }
 
     const relations = [
-      # Newsletter Blocks → Newsletter (M2O)
+      // Newsletter Blocks → Newsletter (M2O)
       {
         collection: 'newsletter_blocks',
         field: 'newsletter_id',
@@ -971,13 +973,13 @@ class CompleteNewsletterInstaller {
           many_collection: 'newsletter_blocks',
           many_field: 'newsletter_id',
           one_collection: 'newsletters',
-          one_field: 'blocks', # This is the field we explicitly added above
+          one_field: 'blocks', // This is the field we explicitly added above
           sort_field: 'sort',
           one_deselect_action: 'delete'
         }
       },
 
-      # Newsletter Blocks → Block Types (M2O)
+      // Newsletter Blocks → Block Types (M2O)
       {
         collection: 'newsletter_blocks',
         field: 'block_type',
@@ -990,7 +992,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      # Newsletter → Mailing List (M2O)
+      // Newsletter → Mailing List (M2O)
       {
         collection: 'newsletters',
         field: 'mailing_list_id',
@@ -1003,7 +1005,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      # Mailing Lists ↔ Subscribers (M2M)
+      // Mailing Lists ↔ Subscribers (M2M)
       {
         collection: 'mailing_lists_subscribers',
         field: 'mailing_lists_id',
@@ -1031,7 +1033,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      # Newsletter Sends → Newsletter (M2O)
+      // Newsletter Sends → Newsletter (M2O)
       {
         collection: 'newsletter_sends',
         field: 'newsletter_id',
@@ -1044,7 +1046,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      # Newsletter Sends → Mailing List (M2O)
+      // Newsletter Sends → Mailing List (M2O)
       {
         collection: 'newsletter_sends',
         field: 'mailing_list_id',
@@ -1058,7 +1060,7 @@ class CompleteNewsletterInstaller {
       }
     ];
 
-    # Create all relationships
+    // Create all relationships
     for (const relation of relations) {
       try {
         await this.directus.request(createRelation(relation));
@@ -1077,7 +1079,7 @@ class CompleteNewsletterInstaller {
   async insertSampleData() {
     console.log('\n🧩 Installing sample data...');
 
-    # Block Types with updated templates and field_visibility_config
+    // Block Types with updated templates and field_visibility_config
     const blockTypes = [
       {
         name: "Hero Section",
@@ -1172,7 +1174,7 @@ class CompleteNewsletterInstaller {
       }
     }
 
-    # Sample Subscribers
+    // Sample Subscribers
     const subscribers = [
       {
         name: "Test User",
@@ -1191,7 +1193,7 @@ class CompleteNewsletterInstaller {
       }
     }
 
-    # Sample Mailing List
+    // Sample Mailing List
     const mailingLists = [
       {
         name: "General Newsletter",
@@ -1227,7 +1229,7 @@ class CompleteNewsletterInstaller {
     console.log('\n🔄 Creating automated newsletter sending flow...');
 
     try {
-      # Create the main flow
+      // Create the main flow
       const flow = await this.directus.request(createFlow({
         name: 'Send Newsletter',
         icon: 'send',
@@ -1247,7 +1249,7 @@ class CompleteNewsletterInstaller {
       console.log(`✅ Created flow: ${flow.name} (ID: ${flow.id})`);
       this.createdFlowId = flow.id;
 
-      # Create flow operations
+      // Create flow operations
       await this.createFlowOperations(flow.id);
 
       console.log('\n🎉 Newsletter flow created successfully!');
@@ -1273,7 +1275,7 @@ class CompleteNewsletterInstaller {
     console.log('\n🔧 Creating flow operations...');
 
     const operations = [
-      # 1. Validate Newsletter
+      // 1. Validate Newsletter
       {
         name: 'Validate Newsletter',
         key: 'validate_newsletter',
@@ -1290,11 +1292,11 @@ class CompleteNewsletterInstaller {
             ]
           }
         },
-        resolve: null, # Will be set after creating compile operation
-        reject: null    # Will be set after creating log operation
+        resolve: null, // Will be set after creating compile operation
+        reject: null    // Will be set after creating log operation
       },
 
-      # 2. Log Validation Error
+      // 2. Log Validation Error
       {
         name: 'Log Validation Error',
         key: 'log_validation_error',
@@ -1307,11 +1309,11 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      # 3. Compile MJML
+      // 3. Compile MJML
       {
         name: 'Compile MJML',
         key: 'compile_mjml',
-        type: 'webhook',
+        type: 'request', // Changed from 'webhook' to 'request'
         position_x: 39,
         position_y: 1,
         options: {
@@ -1325,11 +1327,11 @@ class CompleteNewsletterInstaller {
             newsletter_id: '{{$trigger.body.keys[0]}}'
           })
         },
-        resolve: null, # Will be set after creating next operation
-        reject: null    # Will be set after creating log operation
+        resolve: null, // Will be set after creating next operation
+        reject: null    // Will be set after creating log operation
       },
 
-      # 4. Log Compile Error
+      // 4. Log Compile Error
       {
         name: 'Log Compile Error',
         key: 'log_compile_error',
@@ -1342,7 +1344,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      # 5. Create Send Record
+      // 5. Create Send Record
       {
         name: 'Create Send Record',
         key: 'create_send_record',
@@ -1355,18 +1357,18 @@ class CompleteNewsletterInstaller {
             newsletter_id: '{{$trigger.body.keys[0]}}',
             mailing_list_id: '{{$trigger.body.mailing_list_id}}',  
             status: 'pending',
-            total_recipients: 0 # Will be calculated by send endpoint
+            total_recipients: 0 // Will be calculated by send endpoint
           })
         },
-        resolve: null, # Will be set after creating send operation
+        resolve: null, // Will be set after creating send operation
         reject: null
       },
 
-      # 6. Send Email
+      // 6. Send Email
       {
         name: 'Send Email',
         key: 'send_email',
-        type: 'webhook',
+        type: 'request', // Changed from 'webhook' to 'request'
         position_x: 79,
         position_y: 1,
         options: {
@@ -1381,11 +1383,11 @@ class CompleteNewsletterInstaller {
             send_record_id: '{{create_send_record.id}}'
           })
         },
-        resolve: null, # Will be set after creating update operation
-        reject: null    # Will be set after creating log operation
+        resolve: null, // Will be set after creating update operation
+        reject: null    // Will be set after creating log operation
       },
 
-      # 7. Log Send Error
+      // 7. Log Send Error
       {
         name: 'Log Send Error',
         key: 'log_send_error',
@@ -1396,10 +1398,10 @@ class CompleteNewsletterInstaller {
           level: 'error',
           message: 'Email sending failed: {{send_email.$last.error}}'
         },
-        resolve: null # Will be set after creating update failed operation
+        resolve: null // Will be set after creating update failed operation
       },
 
-      # 8. Update Send Failed
+      // 8. Update Send Failed
       {
         name: 'Update Send Failed',
         key: 'update_send_failed',
@@ -1416,7 +1418,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      # 9. Update Newsletter Status
+      // 9. Update Newsletter Status
       {
         name: 'Update Newsletter Status',
         key: 'update_newsletter_status',
@@ -1430,10 +1432,10 @@ class CompleteNewsletterInstaller {
             status: 'sent'
           })
         },
-        resolve: null # Will be set after creating log success operation
+        resolve: null // Will be set after creating log success operation
       },
 
-      # 10. Log Success
+      // 10. Log Success
       {
         name: 'Log Success',
         key: 'log_success',
@@ -1447,7 +1449,7 @@ class CompleteNewsletterInstaller {
       }
     ];
 
-    # Create all operations first
+    // Create all operations first
     const createdOperations = {};
     for (const operation of operations) {
       try {
@@ -1469,7 +1471,7 @@ class CompleteNewsletterInstaller {
       }
     }
 
-    # Now update operations with resolve/reject connections
+    // Now update operations with resolve/reject connections
     const connections = [
       { from: 'validate_newsletter', resolve: 'compile_mjml', reject: 'log_validation_error' },
       { from: 'compile_mjml', resolve: 'create_send_record', reject: 'log_compile_error' },
@@ -1479,7 +1481,7 @@ class CompleteNewsletterInstaller {
       { from: 'update_newsletter_status', resolve: 'log_success', reject: null }
     ];
 
-    # Update operations with connections
+    // Update operations with connections
     for (const connection of connections) {
       if (createdOperations[connection.from]) {
         const updateData = {};
@@ -1535,7 +1537,7 @@ NUXT_SITE_URL=${this.options.frontendUrl}
 `;
 
     try {
-      # In a real implementation, you'd write this to a file
+      // In a real implementation, you'd write this to a file
       console.log('\n📋 Environment configuration:');
       console.log('Copy this to your .env file:');
       console.log('─'.repeat(60));
@@ -1547,11 +1549,12 @@ NUXT_SITE_URL=${this.options.frontendUrl}
   }
 
   async run() {
-    console.log('🚀 Starting Complete Newsletter Feature Installation v3.4\n');
+    console.log('🚀 Starting Complete Newsletter Feature Installation v3.5\n');
     console.log('🆕 NEW: Automated webhook flow creation!\n');
     console.log('🆕 NEW: Newsletter URL slug for public previews!\n');
     console.log('🆕 NEW: Dynamic field visibility metadata for frontend UI!\n');
     console.log('✅ FIX: Ensured "blocks" field is created on "newsletters" collection.\n');
+    console.log('✅ FIX: Corrected flow operation type to "request".\n');
 
 
     if (!(await this.initialize())) {
@@ -1562,8 +1565,8 @@ NUXT_SITE_URL=${this.options.frontendUrl}
       await this.createCollections();
       await this.createRelations();
       await this.insertSampleData();
-      await this.createNewsletterFlow(); # NEW: Automated flow creation
-      await this.createEnvironmentFile(); # NEW: Environment config
+      await this.createNewsletterFlow(); // NEW: Automated flow creation
+      await this.createEnvironmentFile(); // NEW: Environment config
 
       console.log('\n🎉 Complete newsletter feature installation completed!');
       console.log('\n📦 What was installed:');
@@ -1599,12 +1602,12 @@ NUXT_SITE_URL=${this.options.frontendUrl}
   }
 }
 
-# CLI Interface
+// CLI Interface
 async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 3) {
-    console.log('Complete Newsletter Feature Installer v3.4 - WITH AUTOMATED FLOWS & PREVIEW SLUGS & DYNAMIC FIELDS!');
+    console.log('Complete Newsletter Feature Installer v3.5 - WITH AUTOMATED FLOWS & PREVIEW SLUGS & DYNAMIC FIELDS!');
     console.log('');
     console.log('Usage: node newsletter-installer.js <directus-url> <email> <password> [frontend-url] [webhook-secret]');
     console.log('');
@@ -1972,7 +1975,7 @@ EOF
 
     # Create integration README
     cat > frontend-integration/README.md << 'EOF'
-# Enhanced Newsletter Frontend Integration v3.4
+# Enhanced Newsletter Frontend Integration v3.5
 
 This package contains the enhanced Nuxt.js server endpoints with support for:
 - User-friendly block fields (no JSON required)
