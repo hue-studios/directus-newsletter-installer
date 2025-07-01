@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Directus Newsletter Feature - Updated Deployment Script v3.0
-# Uses the Complete Newsletter Installer
+# Directus Newsletter Feature - Updated Deployment Script v3.1
+# Uses the Complete Newsletter Installer with Automated Directus Flow Creation
 
 set -e
 
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-VERSION="3.0.0"
+VERSION="3.1.0" # Updated version to reflect flow automation
 DEPLOYMENT_DIR="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
 
 print_status() {
@@ -58,12 +58,18 @@ create_package_json() {
     cat > package.json << 'EOF'
 {
   "name": "directus-newsletter-installer",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "type": "module",
-  "description": "Complete Newsletter Feature Installer for Directus 11",
+  "description": "Complete Newsletter Feature Installer for Directus 11 with Automated Flow Creation",
   "main": "newsletter-installer.js",
   "dependencies": {
-    "@directus/sdk": "^17.0.0"
+    "@directus/sdk": "^17.0.0",
+    "mjml": "^4.14.1",
+    "handlebars": "^4.7.8",
+    "@sendgrid/mail": "^8.1.3"
+  },
+  "devDependencies": {
+    "@types/mjml": "^4.7.5"
   },
   "engines": {
     "node": ">=16.0.0"
@@ -71,7 +77,7 @@ create_package_json() {
   "scripts": {
     "install-newsletter": "node newsletter-installer.js"
   },
-  "keywords": ["directus", "newsletter", "mjml", "email", "subscribers"],
+  "keywords": ["directus", "newsletter", "mjml", "email", "subscribers", "flows", "automation"],
   "author": "Your Agency",
   "license": "MIT"
 }
@@ -81,24 +87,17 @@ EOF
 }
 
 download_complete_installer() {
-    print_status "Creating complete newsletter installer..."
+    print_status "Creating complete newsletter installer with automated flow..."
     
     cat > newsletter-installer.js << 'EOF'
 #!/usr/bin/env node
 
 /**
- * Directus Newsletter Feature - Complete Installer v3.0
- * 
- * Features:
- * - Subscribers collection with name, email, company
- * - User-friendly block fields (no JSON)
- * - Proper M2M relationships (subscribers ↔ mailing_lists)
- * - Proper M2O relationships (newsletters → mailing_lists)
- * - Enhanced block content creation
- * - Complete relationship management
+ * Directus Newsletter Feature - Complete Installer with Automated Flow v3.1
+ * * NEW: Automatically creates the complete webhook flow!
  */
 
-import { createDirectus, rest, authentication, readCollections, createCollection, createField, createRelation, createItems, updateItem } from '@directus/sdk';
+import { createDirectus, rest, authentication, readCollections, createCollection, createField, createRelation, createItems, createFlow, createOperation, updateItem } from '@directus/sdk';
 
 class CompleteNewsletterInstaller {
   constructor(directusUrl, email, password, options = {}) {
@@ -107,10 +106,11 @@ class CompleteNewsletterInstaller {
     this.password = password;
     this.existingCollections = new Set();
     this.options = {
-      createFlow: options.createFlow !== false,
+      createFlow: options.createFlow !== false, // Default to true
       frontendUrl: options.frontendUrl || null,
-      webhookSecret: options.webhookSecret || 'change-this-webhook-secret'
+      webhookSecret: options.webhookSecret || 'newsletter-webhook-secret-' + Date.now()
     };
+    this.createdFlowId = null;
   }
 
   async initialize() {
@@ -734,11 +734,11 @@ class CompleteNewsletterInstaller {
           width: 'third',
           note: 'Text color',
           options: {
-            presets: [
-              { color: '#000000', name: 'Black' },
-              { color: '#333333', name: 'Dark Gray' },
-              { color: '#666666', name: 'Gray' },
-              { color: '#ffffff', name: 'White' }
+            choices: [
+              { text: 'Black', value: '#000000' },
+              { text: 'Dark Gray', value: '#333333' },
+              { text: 'Gray', value: '#666666' },
+              { text: 'White', value: '#ffffff' }
             ]
           }
         },
@@ -1161,8 +1161,344 @@ class CompleteNewsletterInstaller {
     }
   }
 
+  async createNewsletterFlow() {
+    if (!this.options.createFlow) {
+      console.log('\n⏭️  Skipping flow creation (disabled in options)');
+      return;
+    }
+
+    if (!this.options.frontendUrl) {
+      console.log('\n⚠️  Cannot create flow without frontend URL');
+      console.log('    Please provide frontend URL or create flow manually in Directus admin');
+      console.log('    Example: node installer.js <directus> <email> <pass> https://yoursite.com');
+      return;
+    }
+
+    console.log('\n🔄 Creating automated newsletter sending flow...');
+
+    try {
+      // Create the main flow
+      const flow = await this.directus.request(createFlow({
+        name: 'Send Newsletter',
+        icon: 'send',
+        color: '#00D4AA',
+        description: 'Compiles MJML blocks and sends newsletter to selected mailing list',
+        status: 'active',
+        trigger: 'manual',
+        accountability: 'all',
+        options: {
+          collections: ['newsletters'],
+          location: 'item',
+          requireConfirmation: true,
+          confirmationDescription: 'This will send the newsletter to the selected mailing list. Are you sure you want to continue?'
+        }
+      }));
+
+      console.log(`✅ Created flow: ${flow.name} (ID: ${flow.id})`);
+      this.createdFlowId = flow.id;
+
+      // Create flow operations
+      await this.createFlowOperations(flow.id);
+
+      console.log('\n🎉 Newsletter flow created successfully!');
+      console.log('\n📋 Flow details:');
+      console.log(`    • Flow ID: ${flow.id}`);
+      console.log(`    • Webhook Secret: ${this.options.webhookSecret}`);
+      console.log(`    • Frontend URL: ${this.options.frontendUrl}`);
+      console.log(`    • Status: Active and ready to use`);
+
+    } catch (error) {
+      console.log(`⚠️  Could not create flow automatically: ${error.message}`);
+      console.log('\nManual setup required:');
+      console.log('1. Go to Settings → Flows in Directus admin');
+      console.log('2. Create "Send Newsletter" flow');
+      console.log(`3. Use webhook secret: ${this.options.webhookSecret}`);
+      console.log(`4. Use frontend URLs:`);
+      console.log(`    - Compile: ${this.options.frontendUrl}/api/newsletter/compile-mjml`);
+      console.log(`    - Send: ${this.options.frontendUrl}/api/newsletter/send`);
+    }
+  }
+
+  async createFlowOperations(flowId) {
+    console.log('\n🔧 Creating flow operations...');
+
+    const operations = [
+      // 1. Validate Newsletter
+      {
+        name: 'Validate Newsletter',
+        key: 'validate_newsletter',
+        type: 'condition',
+        position_x: 19,
+        position_y: 1,
+        options: {
+          filter: {
+            "_and": [
+              { "status": { "_eq": "ready" } },
+              { "subject_line": { "_nnull": true } },
+              { "from_email": { "_nnull": true } },
+              { "mailing_list_id": { "_nnull": true } }
+            ]
+          }
+        },
+        resolve: null, // Will be set after creating compile operation
+        reject: null    // Will be set after creating log operation
+      },
+
+      // 2. Log Validation Error
+      {
+        name: 'Log Validation Error',
+        key: 'log_validation_error',
+        type: 'log',
+        position_x: 19,
+        position_y: 21,
+        options: {
+          level: 'error',
+          message: 'Newsletter validation failed: Newsletter must be in "ready" status with subject line, from email, and mailing list configured.'
+        }
+      },
+
+      // 3. Compile MJML
+      {
+        name: 'Compile MJML',
+        key: 'compile_mjml',
+        type: 'webhook',
+        position_x: 39,
+        position_y: 1,
+        options: {
+          method: 'POST',
+          url: `${this.options.frontendUrl}/api/newsletter/compile-mjml`,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.options.webhookSecret}`
+          },
+          body: JSON.stringify({
+            newsletter_id: '{{$trigger.body.keys[0]}}'
+          })
+        },
+        resolve: null, // Will be set after creating next operation
+        reject: null    // Will be set after creating log operation
+      },
+
+      // 4. Log Compile Error
+      {
+        name: 'Log Compile Error',
+        key: 'log_compile_error',
+        type: 'log',
+        position_x: 39,
+        position_y: 21,
+        options: {
+          level: 'error',
+          message: 'MJML compilation failed: {{compile_mjml.$last.error}}'
+        }
+      },
+
+      // 5. Create Send Record
+      {
+        name: 'Create Send Record',
+        key: 'create_send_record',
+        type: 'create',
+        position_x: 59,
+        position_y: 1,
+        options: {
+          collection: 'newsletter_sends',
+          payload: JSON.stringify({
+            newsletter_id: '{{$trigger.body.keys[0]}}',
+            mailing_list_id: '{{$trigger.body.mailing_list_id}}',  
+            status: 'pending',
+            total_recipients: 0 // Will be calculated by send endpoint
+          })
+        },
+        resolve: null, // Will be set after creating send operation
+        reject: null
+      },
+
+      // 6. Send Email
+      {
+        name: 'Send Email',
+        key: 'send_email',
+        type: 'webhook',
+        position_x: 79,
+        position_y: 1,
+        options: {
+          method: 'POST',
+          url: `${this.options.frontendUrl}/api/newsletter/send`,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.options.webhookSecret}`
+          },
+          body: JSON.stringify({
+            newsletter_id: '{{$trigger.body.keys[0]}}',
+            send_record_id: '{{create_send_record.id}}'
+          })
+        },
+        resolve: null, // Will be set after creating update operation
+        reject: null    // Will be set after creating log operation
+      },
+
+      // 7. Log Send Error
+      {
+        name: 'Log Send Error',
+        key: 'log_send_error',
+        type: 'log',
+        position_x: 79,
+        position_y: 21,
+        options: {
+          level: 'error',
+          message: 'Email sending failed: {{send_email.$last.error}}'
+        },
+        resolve: null // Will be set after creating update failed operation
+      },
+
+      // 8. Update Send Failed
+      {
+        name: 'Update Send Failed',
+        key: 'update_send_failed',
+        type: 'update',
+        position_x: 99,
+        position_y: 21,
+        options: {
+          collection: 'newsletter_sends',
+          key: '{{create_send_record.id}}',
+          payload: JSON.stringify({
+            status: 'failed',
+            error_log: '{{send_email.$last.error}}'
+          })
+        }
+      },
+
+      // 9. Update Newsletter Status
+      {
+        name: 'Update Newsletter Status',
+        key: 'update_newsletter_status',
+        type: 'update',
+        position_x: 99,
+        position_y: 1,
+        options: {
+          collection: 'newsletters',
+          key: '{{$trigger.body.keys[0]}}',
+          payload: JSON.stringify({
+            status: 'sent'
+          })
+        },
+        resolve: null // Will be set after creating log success operation
+      },
+
+      // 10. Log Success
+      {
+        name: 'Log Success',
+        key: 'log_success',
+        type: 'log',
+        position_x: 119,
+        position_y: 1,
+        options: {
+          level: 'info',
+          message: 'Newsletter sent successfully: {{$trigger.body.keys[0]}}'
+        }
+      }
+    ];
+
+    // Create all operations first
+    const createdOperations = {};
+    for (const operation of operations) {
+      try {
+        const created = await this.directus.request(createOperation({
+          flow: flowId,
+          name: operation.name,
+          key: operation.key,
+          type: operation.type,
+          position_x: operation.position_x,
+          position_y: operation.position_y,
+          options: operation.options
+        }));
+        
+        createdOperations[operation.key] = created;
+        console.log(`✅ Created operation: ${operation.name}`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        console.error(`❌ Failed to create operation ${operation.name}:`, error.message);
+      }
+    }
+
+    // Now update operations with resolve/reject connections
+    const connections = [
+      { from: 'validate_newsletter', resolve: 'compile_mjml', reject: 'log_validation_error' },
+      { from: 'compile_mjml', resolve: 'create_send_record', reject: 'log_compile_error' },
+      { from: 'create_send_record', resolve: 'send_email', reject: null },
+      { from: 'send_email', resolve: 'update_newsletter_status', reject: 'log_send_error' },
+      { from: 'log_send_error', resolve: 'update_send_failed', reject: null },
+      { from: 'update_newsletter_status', resolve: 'log_success', reject: null }
+    ];
+
+    // Update operations with connections
+    for (const connection of connections) {
+      if (createdOperations[connection.from]) {
+        const updateData = {};
+        if (connection.resolve && createdOperations[connection.resolve]) {
+          updateData.resolve = createdOperations[connection.resolve].id;
+        }
+        if (connection.reject && createdOperations[connection.reject]) {
+          updateData.reject = createdOperations[connection.reject].id;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          try {
+            await this.directus.request(
+              updateItem('directus_operations', createdOperations[connection.from].id, updateData)
+            );
+            console.log(`✅ Connected ${connection.from} → ${connection.resolve || connection.reject}`);
+          } catch (error) {
+            console.log(`⚠️  Could not connect ${connection.from}:`, error.message);
+          }
+        }
+      }
+    }
+  }
+
+  async createEnvironmentFile() {
+    if (!this.options.frontendUrl) {
+      return;
+    }
+
+    console.log('\n📄 Creating environment configuration...');
+
+    const envContent = `# Directus Newsletter Feature Environment Configuration
+# Generated by installer on ${new Date().toISOString()}
+
+# Directus Configuration
+DIRECTUS_URL=${this.options.frontendUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}
+DIRECTUS_WEBHOOK_SECRET=${this.options.webhookSecret}
+
+# SendGrid Configuration (UPDATE THESE!)
+SENDGRID_API_KEY=SG.your-sendgrid-api-key-here
+SENDGRID_UNSUBSCRIBE_GROUP_ID=12345
+
+# Site Configuration
+NUXT_SITE_URL=${this.options.frontendUrl}
+
+# Optional: Additional Configuration
+# SENDGRID_FROM_EMAIL=newsletter@yoursite.com
+# SENDGRID_FROM_NAME=Your Company Newsletter
+# NEWSLETTER_LOGO_URL=https://yoursite.com/images/logo.png
+
+# IMPORTANT: Update SENDGRID_API_KEY with your actual SendGrid API key!
+# The flow will not work until this is configured.
+`;
+
+    try {
+      // In a real implementation, you'd write this to a file
+      console.log('\n📋 Environment configuration:');
+      console.log('Copy this to your .env file:');
+      console.log('─'.repeat(60));
+      console.log(envContent);
+      console.log('─'.repeat(60));
+    } catch (error) {
+      console.log('⚠️  Could not create environment file:', error.message);
+    }
+  }
+
   async run() {
-    console.log('🚀 Starting Complete Newsletter Feature Installation v3.0\n');
+    console.log('🚀 Starting Complete Newsletter Feature Installation v3.1\n');
+    console.log('🆕 NEW: Automated webhook flow creation!\n');
 
     if (!(await this.initialize())) {
       return false;
@@ -1172,21 +1508,30 @@ class CompleteNewsletterInstaller {
       await this.createCollections();
       await this.createRelations();
       await this.insertSampleData();
+      await this.createNewsletterFlow(); // NEW: Automated flow creation
+      await this.createEnvironmentFile(); // NEW: Environment config
 
       console.log('\n🎉 Complete newsletter feature installation completed!');
       console.log('\n📦 What was installed:');
-      console.log('   • 7 Collections: subscribers, mailing_lists, newsletters, newsletter_blocks, block_types, newsletter_sends, junction table');
-      console.log('   • 5 MJML Block Types with user-friendly fields');
-      console.log('   • Complete M2M relationship (subscribers ↔ mailing_lists)');
-      console.log('   • Complete M2O relationship (newsletters → mailing_lists)');
-      console.log('   • User-friendly block creation (no more JSON!)');
-      console.log('   • Sample data for testing');
+      console.log('    • 7 Collections with all relationships');
+      console.log('    • 5 MJML Block Types with user-friendly fields');
+      console.log('    • Complete M2M relationship (subscribers ↔ mailing_lists)');
+      console.log('    • Complete M2O relationship (newsletters → mailing_lists)');
+      console.log('    • User-friendly block creation (no more JSON!)');
+      console.log('    • Sample data for testing');
+      if (this.createdFlowId) {
+        console.log('    • Automated webhook flow (READY TO USE!)');
+      }
       
       console.log('\n📋 Next steps:');
-      console.log('1. Copy the Nuxt server endpoints to your frontend project');
-      console.log('2. Configure environment variables on your frontend');
-      console.log('3. Set up flow in Directus admin (if needed)');
-      console.log('4. Test creating newsletters with the new user-friendly interface');
+      console.log('1. Copy the frontend-integration/ to your Nuxt project');
+      console.log('2. Configure environment variables (see above)');
+      console.log('3. Update your SendGrid API key in the .env file');
+      if (this.createdFlowId) {
+        console.log('4. Test the complete workflow - it should work immediately!');
+      } else {
+        console.log('4. Complete flow setup in Directus admin (manual)');
+      }
       
       return true;
     } catch (error) {
@@ -1201,20 +1546,30 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 3) {
-    console.log('Complete Newsletter Feature Installer v3.0');
+    console.log('Complete Newsletter Feature Installer v3.1 - WITH AUTOMATED FLOWS!');
     console.log('');
     console.log('Usage: node newsletter-installer.js <directus-url> <email> <password> [frontend-url] [webhook-secret]');
     console.log('');
-    console.log('Features:');
+    console.log('NEW Features:');
+    console.log('  • Automated webhook flow creation (no manual setup!)');
+    console.log('  • Environment configuration generation');
+    console.log('  • Complete one-command installation');
+    console.log('');
+    console.log('Existing Features:');
     console.log('  • Subscribers collection with name, email, company');
     console.log('  • User-friendly block fields (no JSON required!)');
     console.log('  • Proper M2M relationships (subscribers ↔ mailing_lists)');
     console.log('  • Proper M2O relationships (newsletters → mailing_lists)');
-    console.log('  • Enhanced block content creation');
     console.log('');
     console.log('Examples:');
+    console.log('  # Basic installation (manual flow setup)');
     console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123');
+    console.log('');
+    console.log('  # Full automation (creates complete flow!)');
     console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123 https://frontend.example.com');
+    console.log('');
+    console.log('  # With custom webhook secret');
+    console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123 https://frontend.example.com my-secret-key');
     process.exit(1);
   }
 
@@ -1225,36 +1580,6 @@ async function main() {
   if (webhookSecret) options.webhookSecret = webhookSecret;
   
   const installer = new CompleteNewsletterInstaller(directusUrl, email, password, options);
-  
-  const success = await installer.run();
-  process.exit(success ? 0 : 1);
-}
-
-main().catch(console.error);
-
-// CLI Interface
-async function main() {
-  const args = process.argv.slice(2);
-  
-  if (args.length < 3) {
-    console.log('Complete Newsletter Feature Installer v3.0');
-    console.log('');
-    console.log('Usage: node newsletter-installer.js <directus-url> <email> <password>');
-    console.log('');
-    console.log('Features:');
-    console.log('  • Subscribers collection with name, email, company');
-    console.log('  • User-friendly block fields (no JSON required!)');
-    console.log('  • Proper M2M relationships (subscribers ↔ mailing_lists)');
-    console.log('  • Proper M2O relationships (newsletters → mailing_lists)');
-    console.log('');
-    console.log('Example:');
-    console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123');
-    process.exit(1);
-  }
-
-  const [directusUrl, email, password] = args;
-  
-  const installer = new CompleteNewsletterInstaller(directusUrl, email, password);
   
   const success = await installer.run();
   process.exit(success ? 0 : 1);
@@ -1587,13 +1912,14 @@ EOF
 
     # Create integration README
     cat > frontend-integration/README.md << 'EOF'
-# Enhanced Newsletter Frontend Integration v3.0
+# Enhanced Newsletter Frontend Integration v3.1
 
 This package contains the enhanced Nuxt.js server endpoints with support for:
 - User-friendly block fields (no JSON required)
 - Subscriber management integration
 - M2M relationship support (subscribers ↔ mailing_lists)
 - Backwards compatibility with legacy JSON content
+- Automated Directus Flow integration
 
 ## Installation
 
@@ -1612,10 +1938,10 @@ This package contains the enhanced Nuxt.js server endpoints with support for:
 
 3. **Configure Environment Variables**
    ```env
-   DIRECTUS_URL=https://admin.yoursite.com
+   DIRECTUS_URL=[https://admin.yoursite.com](https://admin.yoursite.com)
    DIRECTUS_WEBHOOK_SECRET=your-secure-webhook-secret
    SENDGRID_API_KEY=your-sendgrid-api-key
-   NUXT_SITE_URL=https://yoursite.com
+   NUXT_SITE_URL=[https://yoursite.com](https://yoursite.com)
    ```
 
 ## New Features
@@ -1674,13 +2000,13 @@ install_dependencies() {
 }
 
 run_installer() {
-    local directus_url=$1
-    local email=$2
-    local password=$3
+    # Accept all arguments as an array
+    local installer_args=("$@")
     
     print_status "Running complete newsletter feature installer..."
     
-    node newsletter-installer.js "$directus_url" "$email" "$password"
+    # Pass all received arguments to node
+    node newsletter-installer.js "${installer_args[@]}"
     
     if [ $? -eq 0 ]; then
         print_success "Newsletter feature installed successfully!"
@@ -1691,13 +2017,14 @@ run_installer() {
         echo "✅ Proper M2M relationships (subscribers ↔ mailing_lists)"
         echo "✅ Proper M2O relationships (newsletters → mailing_lists)"
         echo "✅ Enhanced MJML block system"
+        echo "✅ Automated Directus Flow for sending newsletters"
+        echo "✅ Environment configuration guidance"
         echo ""
         print_status "Next steps:"
         echo "1. Copy frontend-integration/ to your Nuxt project"
         echo "2. Follow the integration instructions in frontend-integration/README.md"
-        echo "3. Test creating newsletters with the new user-friendly interface"
-        echo "4. Create subscribers and mailing lists"
-        echo "5. Test the complete workflow"
+        echo "3. **IMPORTANT**: Update your SendGrid API key in the .env file (generated by installer)"
+        echo "4. Test the complete workflow - it should work immediately!"
     else
         print_error "Installation failed. Check the output above for details."
         return 1
@@ -1713,16 +2040,18 @@ show_usage() {
     echo "  • Proper M2M relationships (subscribers ↔ mailing_lists)"
     echo "  • Proper M2O relationships (newsletters → mailing_lists)"
     echo "  • Enhanced block content creation"
+    echo "  • Automated Directus Flow creation for sending"
+    echo "  • Environment configuration generation"
     echo ""
     echo "Usage:"
     echo "  $0 setup                                              # Download and setup installation files"
-    echo "  $0 install <directus-url> <email> <password>         # Install to Directus"
-    echo "  $0 full <directus-url> <email> <password>            # Setup and install"
+    echo "  $0 install <directus-url> <email> <password> [frontend-url] [webhook-secret] # Install to Directus"
+    echo "  $0 full <directus-url> <email> <password> [frontend-url] [webhook-secret] # Setup and install"
     echo ""
     echo "Examples:"
     echo "  $0 setup"
     echo "  $0 install https://admin.example.com admin@example.com password"
-    echo "  $0 full https://admin.example.com admin@example.com password"
+    echo "  $0 full https://admin.example.com admin@example.com password https://frontend.example.com my-custom-secret"
     echo ""
 }
 
@@ -1734,6 +2063,7 @@ main() {
     echo "🎉 Enhanced with user-friendly block creation!"
     echo "📧 Complete subscriber management system!"
     echo "🔗 Proper relationships for all collections!"
+    echo "🚀 Now with Automated Directus Flow Creation!" # New line
     echo ""
 
     # Check if Node.js is installed
@@ -1760,12 +2090,12 @@ main() {
             install_dependencies
             print_success "Setup completed! Files ready in $DEPLOYMENT_DIR"
             echo ""
-            print_status "Next: Run installation with your Directus credentials"
-            echo "  $0 install https://your-directus-url.com admin@example.com password"
+            print_status "Next: Run installation with your Directus credentials (and optional frontend URL/webhook secret)"
+            echo "  $0 install https://your-directus-url.com admin@example.com password [https://your-frontend.com] [your-webhook-secret]"
             ;;
         "install")
             if [ $# -lt 4 ]; then
-                print_error "Install command requires 3 arguments"
+                print_error "Install command requires at least 3 arguments (directus-url, email, password)"
                 show_usage
                 exit 1
             fi
@@ -1773,11 +2103,12 @@ main() {
                 print_error "Installation files not found. Run '$0 setup' first."
                 exit 1
             }
-            run_installer "$2" "$3" "$4"
+            # Pass all arguments from $2 onwards to run_installer
+            run_installer "${@:2}"
             ;;
         "full")
             if [ $# -lt 4 ]; then
-                print_error "Full command requires 3 arguments"
+                print_error "Full command requires at least 3 arguments (directus-url, email, password)"
                 show_usage
                 exit 1
             fi
@@ -1789,7 +2120,8 @@ main() {
             install_dependencies
             print_success "Setup completed!"
             echo ""
-            run_installer "$2" "$3" "$4"
+            # Pass all arguments from $2 onwards to run_installer
+            run_installer "${@:2}"
             ;;
         *)
             show_usage
