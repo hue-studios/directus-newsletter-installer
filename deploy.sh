@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# Directus Newsletter Feature - Updated Deployment Script v3.5
+# Directus Newsletter Feature - Updated Deployment Script v3.8
 # Uses the Complete Newsletter Installer with Automated Directus Flow Creation
 # NEW: Adds a URL slug for newsletter previews.
 # NEW: Adds field_visibility_config to block_types for dynamic frontend rendering.
 # FIX: Explicitly attempts to add 'blocks' field to 'newsletters' collection for relationship.
 # FIX: Corrected flow operation type from 'webhook' to 'request'.
+# FIX: Ensured all 'EOF' markers are correctly placed and unindented to prevent syntax errors.
 
 set -e
 
@@ -16,7 +17,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-VERSION="3.5.0" # Updated version to reflect flow operation type fix
+VERSION="3.8.0" # Updated version to reflect EOF fix
 DEPLOYMENT_DIR="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
 
 print_status() {
@@ -62,7 +63,7 @@ create_package_json() {
     cat > package.json << 'EOF'
 {
   "name": "directus-newsletter-installer",
-  "version": "3.5.0",
+  "version": "3.8.0",
   "type": "module",
   "description": "Complete Newsletter Feature Installer for Directus 11 with Automated Flow Creation, Preview Slugs, and Dynamic Field Metadata",
   "main": "newsletter-installer.js",
@@ -97,7 +98,7 @@ download_complete_installer() {
 #!/usr/bin/env node
 
 /**
- * Directus Newsletter Feature - Complete Installer with Automated Flow v3.5
+ * Directus Newsletter Feature - Complete Installer with Automated Flow v3.8
  * * NEW: Automatically creates the complete webhook flow!
  * * NEW: Adds a URL slug for newsletter previews.
  * * NEW: Adds field_visibility_config to block_types for dynamic frontend rendering.
@@ -1537,7 +1538,7 @@ NUXT_SITE_URL=${this.options.frontendUrl}
 `;
 
     try {
-      // In a real implementation, you'd write this to a file
+      # In a real implementation, you'd write this to a file
       console.log('\n📋 Environment configuration:');
       console.log('Copy this to your .env file:');
       console.log('─'.repeat(60));
@@ -1549,12 +1550,13 @@ NUXT_SITE_URL=${this.options.frontendUrl}
   }
 
   async run() {
-    console.log('🚀 Starting Complete Newsletter Feature Installation v3.5\n');
+    console.log('🚀 Starting Complete Newsletter Feature Installation v3.8\n');
     console.log('🆕 NEW: Automated webhook flow creation!\n');
     console.log('🆕 NEW: Newsletter URL slug for public previews!\n');
     console.log('🆕 NEW: Dynamic field visibility metadata for frontend UI!\n');
     console.log('✅ FIX: Ensured "blocks" field is created on "newsletters" collection.\n');
     console.log('✅ FIX: Corrected flow operation type to "request".\n');
+    console.log('✅ FIX: Resolved EOF issues in installer script.\n');
 
 
     if (!(await this.initialize())) {
@@ -1602,12 +1604,12 @@ NUXT_SITE_URL=${this.options.frontendUrl}
   }
 }
 
-// CLI Interface
+# CLI Interface
 async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 3) {
-    console.log('Complete Newsletter Feature Installer v3.5 - WITH AUTOMATED FLOWS & PREVIEW SLUGS & DYNAMIC FIELDS!');
+    console.log('Complete Newsletter Feature Installer v3.8 - WITH AUTOMATED FLOWS & PREVIEW SLUGS & DYNAMIC FIELDS!');
     console.log('');
     console.log('Usage: node newsletter-installer.js <directus-url> <email> <password> [frontend-url] [webhook-secret]');
     console.log('');
@@ -1967,7 +1969,7 @@ export default defineEventHandler(async (event) => {
 
     throw createError({
       statusCode: error.statusCode || 500,
-      statusMessage: error.statusMessage || "Email sending failed",
+      statusMessage: error.statusMessage || "Internal server error",
     });
   }
 });
@@ -1975,7 +1977,7 @@ EOF
 
     # Create integration README
     cat > frontend-integration/README.md << 'EOF'
-# Enhanced Newsletter Frontend Integration v3.5
+# Enhanced Newsletter Frontend Integration v3.8
 
 This package contains the enhanced Nuxt.js server endpoints with support for:
 - User-friendly block fields (no JSON required)
@@ -2328,4 +2330,4 @@ To make the `newsletter_blocks` fields dynamic based on the selected `block_type
       height: 38px; /* Adjust as needed */
     }
     </style>
-    
+EOF
