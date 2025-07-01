@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# Directus Newsletter Feature - Updated Deployment Script v3.1
+# Directus Newsletter Feature - Updated Deployment Script v3.4
 # Uses the Complete Newsletter Installer with Automated Directus Flow Creation
+# NEW: Adds a URL slug for newsletter previews.
+# NEW: Adds field_visibility_config to block_types for dynamic frontend rendering.
+# FIX: Explicitly attempts to add 'blocks' field to 'newsletters' collection for relationship.
 
 set -e
 
@@ -12,7 +15,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-VERSION="3.1.0" # Updated version to reflect flow automation
+VERSION="3.4.0" # Updated version to reflect relationship fix
 DEPLOYMENT_DIR="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
 
 print_status() {
@@ -42,7 +45,7 @@ setup_deployment_dir() {
         if mkdir -p "$DEPLOYMENT_DIR"; then
             print_success "Created deployment directory: $DEPLOYMENT_DIR"
         else
-            print_error "Failed to create deployment directory: $DEPLOYMENT_DIR"
+            print_error "Failed to create deployment directory: $DEPLOYment_DIR"
             exit 1
         fi
     else
@@ -58,9 +61,9 @@ create_package_json() {
     cat > package.json << 'EOF'
 {
   "name": "directus-newsletter-installer",
-  "version": "3.1.0",
+  "version": "3.4.0",
   "type": "module",
-  "description": "Complete Newsletter Feature Installer for Directus 11 with Automated Flow Creation",
+  "description": "Complete Newsletter Feature Installer for Directus 11 with Automated Flow Creation, Preview Slugs, and Dynamic Field Metadata",
   "main": "newsletter-installer.js",
   "dependencies": {
     "@directus/sdk": "^17.0.0",
@@ -77,7 +80,7 @@ create_package_json() {
   "scripts": {
     "install-newsletter": "node newsletter-installer.js"
   },
-  "keywords": ["directus", "newsletter", "mjml", "email", "subscribers", "flows", "automation"],
+  "keywords": ["directus", "newsletter", "mjml", "email", "subscribers", "flows", "automation", "preview", "dynamic fields"],
   "author": "Your Agency",
   "license": "MIT"
 }
@@ -87,14 +90,17 @@ EOF
 }
 
 download_complete_installer() {
-    print_status "Creating complete newsletter installer with automated flow..."
+    print_status "Creating complete newsletter installer with automated flow and preview slug..."
     
     cat > newsletter-installer.js << 'EOF'
 #!/usr/bin/env node
 
 /**
- * Directus Newsletter Feature - Complete Installer with Automated Flow v3.1
+ * Directus Newsletter Feature - Complete Installer with Automated Flow v3.4
  * * NEW: Automatically creates the complete webhook flow!
+ * * NEW: Adds a URL slug for newsletter previews.
+ * * NEW: Adds field_visibility_config to block_types for dynamic frontend rendering.
+ * * FIX: Ensures 'blocks' field is created on 'newsletters' collection.
  */
 
 import { createDirectus, rest, authentication, readCollections, createCollection, createField, createRelation, createItems, createFlow, createOperation, updateItem } from '@directus/sdk';
@@ -341,6 +347,16 @@ class CompleteNewsletterInstaller {
           },
           default_value: 'published'
         }
+      },
+      { 
+        field: 'field_visibility_config',
+        type: 'json',
+        meta: { 
+          interface: 'input-code', 
+          options: { language: 'json' },
+          note: 'JSON array of fields to show for this block type in the frontend UI'
+        },
+        schema: { is_nullable: true }
       }
     ];
 
@@ -511,6 +527,18 @@ class CompleteNewsletterInstaller {
         type: 'string',
         meta: { interface: 'input', required: true, width: 'half' },
         schema: { is_nullable: false }
+      },
+      {
+        field: 'slug', 
+        type: 'string',
+        meta: { 
+          interface: 'input', 
+          required: true, 
+          width: 'half',
+          note: 'URL-friendly slug for public preview (e.g., my-awesome-newsletter)',
+          options: { iconLeft: 'link' }
+        },
+        schema: { is_nullable: false, is_unique: true, has_index: true } 
       },
       {
         field: 'subject_line',
@@ -900,7 +928,24 @@ class CompleteNewsletterInstaller {
   async createRelations() {
     console.log('\n🔗 Creating relationships...');
 
-    // First, add the M2O field to newsletters
+    # Explicitly add the 'blocks' O2M field to 'newsletters' BEFORE creating the relationship
+    # This ensures the field exists before the relation attempts to link to it.
+    await this.createFieldWithRetry('newsletters', {
+      field: 'blocks',
+      type: 'alias', # Use alias type for O2M relation field
+      meta: {
+        interface: 'list-o2m',
+        options: {
+          template: '{{block_type.name}} (#{{sort}})'
+        },
+        note: 'Blocks composing this newsletter'
+      },
+      schema: {
+        is_nullable: true # Can be null if no blocks
+      }
+    });
+
+    # First, add the M2O field to newsletters
     try {
       await this.createFieldWithRetry('newsletters', {
         field: 'mailing_list_id',
@@ -917,7 +962,7 @@ class CompleteNewsletterInstaller {
     }
 
     const relations = [
-      // Newsletter Blocks → Newsletter (M2O)
+      # Newsletter Blocks → Newsletter (M2O)
       {
         collection: 'newsletter_blocks',
         field: 'newsletter_id',
@@ -926,13 +971,13 @@ class CompleteNewsletterInstaller {
           many_collection: 'newsletter_blocks',
           many_field: 'newsletter_id',
           one_collection: 'newsletters',
-          one_field: 'blocks',
+          one_field: 'blocks', # This is the field we explicitly added above
           sort_field: 'sort',
           one_deselect_action: 'delete'
         }
       },
 
-      // Newsletter Blocks → Block Types (M2O)
+      # Newsletter Blocks → Block Types (M2O)
       {
         collection: 'newsletter_blocks',
         field: 'block_type',
@@ -945,7 +990,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      // Newsletter → Mailing List (M2O)
+      # Newsletter → Mailing List (M2O)
       {
         collection: 'newsletters',
         field: 'mailing_list_id',
@@ -958,7 +1003,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      // Mailing Lists ↔ Subscribers (M2M)
+      # Mailing Lists ↔ Subscribers (M2M)
       {
         collection: 'mailing_lists_subscribers',
         field: 'mailing_lists_id',
@@ -986,7 +1031,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      // Newsletter Sends → Newsletter (M2O)
+      # Newsletter Sends → Newsletter (M2O)
       {
         collection: 'newsletter_sends',
         field: 'newsletter_id',
@@ -999,7 +1044,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      // Newsletter Sends → Mailing List (M2O)
+      # Newsletter Sends → Mailing List (M2O)
       {
         collection: 'newsletter_sends',
         field: 'mailing_list_id',
@@ -1013,7 +1058,7 @@ class CompleteNewsletterInstaller {
       }
     ];
 
-    // Create all relationships
+    # Create all relationships
     for (const relation of relations) {
       try {
         await this.directus.request(createRelation(relation));
@@ -1032,7 +1077,7 @@ class CompleteNewsletterInstaller {
   async insertSampleData() {
     console.log('\n🧩 Installing sample data...');
 
-    // Block Types with updated templates
+    # Block Types with updated templates and field_visibility_config
     const blockTypes = [
       {
         name: "Hero Section",
@@ -1055,7 +1100,8 @@ class CompleteNewsletterInstaller {
     {{/if}}
   </mj-column>
 </mj-section>`,
-        status: "published"
+        status: "published",
+        field_visibility_config: ["title", "subtitle", "button_text", "button_url", "background_color", "text_color", "text_align", "padding"]
       },
       {
         name: "Text Block",
@@ -1068,7 +1114,8 @@ class CompleteNewsletterInstaller {
     </mj-text>
   </mj-column>
 </mj-section>`,
-        status: "published"
+        status: "published",
+        field_visibility_config: ["text_content", "background_color", "text_color", "text_align", "padding", "font_size"]
       },
       {
         name: "Image Block",
@@ -1084,7 +1131,8 @@ class CompleteNewsletterInstaller {
     {{/if}}
   </mj-column>
 </mj-section>`,
-        status: "published"
+        status: "published",
+        field_visibility_config: ["image_url", "image_alt_text", "image_caption", "background_color", "text_align", "padding"]
       },
       {
         name: "Button",
@@ -1097,7 +1145,8 @@ class CompleteNewsletterInstaller {
     </mj-button>
   </mj-column>
 </mj-section>`,
-        status: "published"
+        status: "published",
+        field_visibility_config: ["button_text", "button_url", "background_color", "text_align", "padding"]
       },
       {
         name: "Divider",
@@ -1108,7 +1157,8 @@ class CompleteNewsletterInstaller {
     <mj-divider border-color="{{text_color}}" border-width="1px" />
   </mj-column>
 </mj-section>`,
-        status: "published"
+        status: "published",
+        field_visibility_config: ["text_color", "background_color", "padding"]
       }
     ];
 
@@ -1122,7 +1172,7 @@ class CompleteNewsletterInstaller {
       }
     }
 
-    // Sample Subscribers
+    # Sample Subscribers
     const subscribers = [
       {
         name: "Test User",
@@ -1141,7 +1191,7 @@ class CompleteNewsletterInstaller {
       }
     }
 
-    // Sample Mailing List
+    # Sample Mailing List
     const mailingLists = [
       {
         name: "General Newsletter",
@@ -1177,7 +1227,7 @@ class CompleteNewsletterInstaller {
     console.log('\n🔄 Creating automated newsletter sending flow...');
 
     try {
-      // Create the main flow
+      # Create the main flow
       const flow = await this.directus.request(createFlow({
         name: 'Send Newsletter',
         icon: 'send',
@@ -1197,7 +1247,7 @@ class CompleteNewsletterInstaller {
       console.log(`✅ Created flow: ${flow.name} (ID: ${flow.id})`);
       this.createdFlowId = flow.id;
 
-      // Create flow operations
+      # Create flow operations
       await this.createFlowOperations(flow.id);
 
       console.log('\n🎉 Newsletter flow created successfully!');
@@ -1223,7 +1273,7 @@ class CompleteNewsletterInstaller {
     console.log('\n🔧 Creating flow operations...');
 
     const operations = [
-      // 1. Validate Newsletter
+      # 1. Validate Newsletter
       {
         name: 'Validate Newsletter',
         key: 'validate_newsletter',
@@ -1240,11 +1290,11 @@ class CompleteNewsletterInstaller {
             ]
           }
         },
-        resolve: null, // Will be set after creating compile operation
-        reject: null    // Will be set after creating log operation
+        resolve: null, # Will be set after creating compile operation
+        reject: null    # Will be set after creating log operation
       },
 
-      // 2. Log Validation Error
+      # 2. Log Validation Error
       {
         name: 'Log Validation Error',
         key: 'log_validation_error',
@@ -1257,7 +1307,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      // 3. Compile MJML
+      # 3. Compile MJML
       {
         name: 'Compile MJML',
         key: 'compile_mjml',
@@ -1275,11 +1325,11 @@ class CompleteNewsletterInstaller {
             newsletter_id: '{{$trigger.body.keys[0]}}'
           })
         },
-        resolve: null, // Will be set after creating next operation
-        reject: null    // Will be set after creating log operation
+        resolve: null, # Will be set after creating next operation
+        reject: null    # Will be set after creating log operation
       },
 
-      // 4. Log Compile Error
+      # 4. Log Compile Error
       {
         name: 'Log Compile Error',
         key: 'log_compile_error',
@@ -1292,7 +1342,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      // 5. Create Send Record
+      # 5. Create Send Record
       {
         name: 'Create Send Record',
         key: 'create_send_record',
@@ -1305,14 +1355,14 @@ class CompleteNewsletterInstaller {
             newsletter_id: '{{$trigger.body.keys[0]}}',
             mailing_list_id: '{{$trigger.body.mailing_list_id}}',  
             status: 'pending',
-            total_recipients: 0 // Will be calculated by send endpoint
+            total_recipients: 0 # Will be calculated by send endpoint
           })
         },
-        resolve: null, // Will be set after creating send operation
+        resolve: null, # Will be set after creating send operation
         reject: null
       },
 
-      // 6. Send Email
+      # 6. Send Email
       {
         name: 'Send Email',
         key: 'send_email',
@@ -1331,11 +1381,11 @@ class CompleteNewsletterInstaller {
             send_record_id: '{{create_send_record.id}}'
           })
         },
-        resolve: null, // Will be set after creating update operation
-        reject: null    // Will be set after creating log operation
+        resolve: null, # Will be set after creating update operation
+        reject: null    # Will be set after creating log operation
       },
 
-      // 7. Log Send Error
+      # 7. Log Send Error
       {
         name: 'Log Send Error',
         key: 'log_send_error',
@@ -1346,10 +1396,10 @@ class CompleteNewsletterInstaller {
           level: 'error',
           message: 'Email sending failed: {{send_email.$last.error}}'
         },
-        resolve: null // Will be set after creating update failed operation
+        resolve: null # Will be set after creating update failed operation
       },
 
-      // 8. Update Send Failed
+      # 8. Update Send Failed
       {
         name: 'Update Send Failed',
         key: 'update_send_failed',
@@ -1366,7 +1416,7 @@ class CompleteNewsletterInstaller {
         }
       },
 
-      // 9. Update Newsletter Status
+      # 9. Update Newsletter Status
       {
         name: 'Update Newsletter Status',
         key: 'update_newsletter_status',
@@ -1380,10 +1430,10 @@ class CompleteNewsletterInstaller {
             status: 'sent'
           })
         },
-        resolve: null // Will be set after creating log success operation
+        resolve: null # Will be set after creating log success operation
       },
 
-      // 10. Log Success
+      # 10. Log Success
       {
         name: 'Log Success',
         key: 'log_success',
@@ -1397,7 +1447,7 @@ class CompleteNewsletterInstaller {
       }
     ];
 
-    // Create all operations first
+    # Create all operations first
     const createdOperations = {};
     for (const operation of operations) {
       try {
@@ -1419,7 +1469,7 @@ class CompleteNewsletterInstaller {
       }
     }
 
-    // Now update operations with resolve/reject connections
+    # Now update operations with resolve/reject connections
     const connections = [
       { from: 'validate_newsletter', resolve: 'compile_mjml', reject: 'log_validation_error' },
       { from: 'compile_mjml', resolve: 'create_send_record', reject: 'log_compile_error' },
@@ -1429,7 +1479,7 @@ class CompleteNewsletterInstaller {
       { from: 'update_newsletter_status', resolve: 'log_success', reject: null }
     ];
 
-    // Update operations with connections
+    # Update operations with connections
     for (const connection of connections) {
       if (createdOperations[connection.from]) {
         const updateData = {};
@@ -1485,7 +1535,7 @@ NUXT_SITE_URL=${this.options.frontendUrl}
 `;
 
     try {
-      // In a real implementation, you'd write this to a file
+      # In a real implementation, you'd write this to a file
       console.log('\n📋 Environment configuration:');
       console.log('Copy this to your .env file:');
       console.log('─'.repeat(60));
@@ -1497,8 +1547,12 @@ NUXT_SITE_URL=${this.options.frontendUrl}
   }
 
   async run() {
-    console.log('🚀 Starting Complete Newsletter Feature Installation v3.1\n');
+    console.log('🚀 Starting Complete Newsletter Feature Installation v3.4\n');
     console.log('🆕 NEW: Automated webhook flow creation!\n');
+    console.log('🆕 NEW: Newsletter URL slug for public previews!\n');
+    console.log('🆕 NEW: Dynamic field visibility metadata for frontend UI!\n');
+    console.log('✅ FIX: Ensured "blocks" field is created on "newsletters" collection.\n');
+
 
     if (!(await this.initialize())) {
       return false;
@@ -1508,8 +1562,8 @@ NUXT_SITE_URL=${this.options.frontendUrl}
       await this.createCollections();
       await this.createRelations();
       await this.insertSampleData();
-      await this.createNewsletterFlow(); // NEW: Automated flow creation
-      await this.createEnvironmentFile(); // NEW: Environment config
+      await this.createNewsletterFlow(); # NEW: Automated flow creation
+      await this.createEnvironmentFile(); # NEW: Environment config
 
       console.log('\n🎉 Complete newsletter feature installation completed!');
       console.log('\n📦 What was installed:');
@@ -1519,6 +1573,8 @@ NUXT_SITE_URL=${this.options.frontendUrl}
       console.log('    • Complete M2O relationship (newsletters → mailing_lists)');
       console.log('    • User-friendly block creation (no more JSON!)');
       console.log('    • Sample data for testing');
+      console.log('    • Newsletter slug field for public previews');
+      console.log('    • Block type field visibility configuration (for frontend UI)');
       if (this.createdFlowId) {
         console.log('    • Automated webhook flow (READY TO USE!)');
       }
@@ -1532,6 +1588,8 @@ NUXT_SITE_URL=${this.options.frontendUrl}
       } else {
         console.log('4. Complete flow setup in Directus admin (manual)');
       }
+      console.log('5. Implement the Nuxt.js preview page (see frontend-integration/README.md for details).');
+      console.log('6. Implement dynamic field visibility in your frontend (see frontend-integration/README.md for details).');
       
       return true;
     } catch (error) {
@@ -1541,18 +1599,20 @@ NUXT_SITE_URL=${this.options.frontendUrl}
   }
 }
 
-// CLI Interface
+# CLI Interface
 async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 3) {
-    console.log('Complete Newsletter Feature Installer v3.1 - WITH AUTOMATED FLOWS!');
+    console.log('Complete Newsletter Feature Installer v3.4 - WITH AUTOMATED FLOWS & PREVIEW SLUGS & DYNAMIC FIELDS!');
     console.log('');
     console.log('Usage: node newsletter-installer.js <directus-url> <email> <password> [frontend-url] [webhook-secret]');
     console.log('');
     console.log('NEW Features:');
     console.log('  • Automated webhook flow creation (no manual setup!)');
     console.log('  • Environment configuration generation');
+    console.log('  • Newsletter URL slug for public previews');
+    console.log('  • Dynamic field visibility metadata for frontend UI');
     console.log('  • Complete one-command installation');
     console.log('');
     console.log('Existing Features:');
@@ -1912,7 +1972,7 @@ EOF
 
     # Create integration README
     cat > frontend-integration/README.md << 'EOF'
-# Enhanced Newsletter Frontend Integration v3.1
+# Enhanced Newsletter Frontend Integration v3.4
 
 This package contains the enhanced Nuxt.js server endpoints with support for:
 - User-friendly block fields (no JSON required)
@@ -1964,170 +2024,305 @@ Users now create blocks with proper form fields instead of JSON:
 - Backwards compatible with existing newsletters
 - Better error handling and logging
 
-## Testing
+### Newsletter Preview by Slug
+You can now create a public-facing page to preview newsletters using a URL slug.
 
-```bash
-# Test MJML compilation
-curl -X POST http://localhost:3000/api/newsletter/compile-mjml \
-  -H "Authorization: Bearer your-webhook-secret" \
-  -H "Content-Type: application/json" \
-  -d '{"newsletter_id": 1}'
+**Steps to Implement in Nuxt 3:**
 
-# Test sending
-curl -X POST http://localhost:3000/api/newsletter/send \
-  -H "Authorization: Bearer your-webhook-secret" \
-  -H "Content-Type: application/json" \
-  -d '{"newsletter_id": 1, "send_record_id": 1}'
-```
-EOF
+1.  **Ensure Public Read Access in Directus:**
+    * Go to your Directus Admin Panel -> Settings -> Roles & Permissions.
+    * Select the `Public` role.
+    * Find the `newsletters` collection and grant `Read` permission.
+    * For the `Read` permission, you might want to limit fields to `slug` and `compiled_html` for security/privacy.
 
-    print_success "Enhanced frontend integration package created in frontend-integration/"
-}
+2.  **Create a Nuxt Page for Preview:**
+    Create a file like `pages/newsletter/[slug].vue` in your Nuxt 3 project:
 
-install_dependencies() {
-    print_status "Installing Node.js dependencies..."
+    ```vue
+    <template>
+      <div v-if="newsletterHtml" v-html="newsletterHtml"></div>
+      <div v-else>
+        <p>Loading newsletter preview...</p>
+        <p v-if="error">{{ error.message }}</p>
+      </div>
+    </template>
+
+    <script setup lang="ts">
+    import { createDirectus, rest, readItems } from '@directus/sdk';
+    import { ref, onMounted } from 'vue';
+    import { useRoute } from 'vue-router';
+
+    const config = useRuntimeConfig();
+    const route = useRoute();
+    const newsletterHtml = ref<string | null>(null);
+    const error = ref<Error | null>(null);
+
+    onMounted(async () => {
+      const slug = route.params.slug;
+
+      if (!slug) {
+        error.value = new Error('Newsletter slug not provided in URL.');
+        return;
+      }
+
+      try {
+        const directus = createDirectus(config.public.directusUrl as string).with(rest());
+        
+        // Fetch newsletter by slug
+        const response = await directus.request(
+          readItems('newsletters', {
+            filter: {
+              slug: {
+                _eq: slug
+              },
+              status: { // Only show published/sent newsletters publicly
+                _in: ['published', 'sent'] 
+              }
+            },
+            fields: ['compiled_html']
+          })
+        );
+
+        if (response && response.length > 0) {
+          newsletterHtml.value = response[0].compiled_html;
+        } else {
+          error.value = new Error(`Newsletter with slug "${slug}" not found or not published.`);
+        }
+      } catch (err: any) {
+        console.error('Error fetching newsletter preview:', err);
+        error.value = new Error('Failed to load newsletter preview. Please try again later.');
+      }
+    });
+
+    // Optional: Set page title
+    useHead({
+      title: `Newsletter Preview - ${route.params.slug}`
+    });
+    </script>
+
+    <style>
+    /* Basic styling to make the HTML content readable */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f0f0f0;
+    }
+    div {
+      max-width: 600px; /* Standard email width */
+      margin: 20px auto;
+      background-color: #ffffff;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      padding: 0; /* MJML generated HTML often has its own padding */
+    }
+    /* Add any other global styles for your email preview here */
+    </style>
+    ```
+
+3.  **Generate Slugs for Newsletters:**
+    When you create or update a newsletter in Directus, ensure you populate the `slug` field. You can:
+    * **Manually:** Type a unique, URL-friendly slug (e.g., `my-first-newsletter`, `july-2025-update`).
+    * **Automatically (Recommended for production):** Implement a Directus Flow Hook that generates the slug from the `title` field whenever a newsletter is created or updated. You can use a "Run Script" operation with JavaScript to slugify the title.
+
+### Dynamic Field Visibility in Frontend UI
+
+To make the `newsletter_blocks` fields dynamic based on the selected `block_type`, you'll need to implement this logic in your frontend application (e.g., your Nuxt.js project).
+
+**How to Implement in Nuxt 3 (for a custom block editing component):**
+
+1.  **Fetch `block_types` with `field_visibility_config`:**
+    When your frontend loads a newsletter for editing, or when a user selects a `block_type` for a `newsletter_block`, you should fetch the `block_types` collection, ensuring you include the `field_visibility_config` field.
+
+    ```typescript
+    // Example of fetching block types in Nuxt 3
+    import { createDirectus, rest, readItems } from '@directus/sdk';
+
+    const config = useRuntimeConfig();
+    const directus = createDirectus(config.public.directusUrl as string).with(rest());
+
+    interface BlockType {
+      id: string;
+      name: string;
+      slug: string;
+      field_visibility_config: string[]; // Array of field names
+      // ... other fields
+    }
+
+    const blockTypes = ref<BlockType[]>([]);
+
+    async function fetchBlockTypes() {
+      try {
+        blockTypes.value = await directus.request(
+          readItems('block_types', {
+            fields: ['id', 'name', 'slug', 'field_visibility_config']
+          })
+        );
+      } catch (e) {
+        console.error('Error fetching block types:', e);
+      }
+    }
+
+    onMounted(fetchBlockTypes);
+    ```
+
+2.  **Implement Conditional Rendering in your Vue Component:**
+    In your Nuxt.js component where you edit `newsletter_blocks`, you'll need logic to:
+    * Get the currently selected `block_type` for the `newsletter_block` being edited.
+    * Find the corresponding `block_type` object from your `blockTypes` data.
+    * Use the `field_visibility_config` array from that `block_type` to conditionally render the input fields for the `newsletter_block`.
+
+    ```vue
+    <template>
+      <div>
+        <!-- Block Type Selector -->
+        <label for="blockType">Block Type:</label>
+        <select id="blockType" v-model="selectedBlockTypeId" @change="updateVisibleFields">
+          <option v-for="type in blockTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
+        </select>
+
+        <!-- Dynamically rendered fields -->
+        <div v-if="currentBlockTypeConfig">
+          <div v-if="currentBlockTypeConfig.includes('title')">
+            <label for="title">Title:</label>
+            <input type="text" id="title" v-model="blockData.title" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('subtitle')">
+            <label for="subtitle">Subtitle:</label>
+            <input type="text" id="subtitle" v-model="blockData.subtitle" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('text_content')">
+            <label for="textContent">Content:</label>
+            <textarea id="textContent" v-model="blockData.text_content"></textarea>
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('image_url')">
+            <label for="imageUrl">Image URL:</label>
+            <input type="text" id="imageUrl" v-model="blockData.image_url" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('image_alt_text')">
+            <label for="imageAltText">Image Alt Text:</label>
+            <input type="text" id="imageAltText" v-model="blockData.image_alt_text" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('image_caption')">
+            <label for="imageCaption">Image Caption:</label>
+            <input type="text" id="imageCaption" v-model="blockData.image_caption" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('button_text')">
+            <label for="buttonText">Button Text:</label>
+            <input type="text" id="buttonText" v-model="blockData.button_text" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('button_url')">
+            <label for="buttonUrl">Button URL:</label>
+            <input type="text" id="buttonUrl" v-model="blockData.button_url" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('background_color')">
+            <label for="backgroundColor">Background Color:</label>
+            <input type="color" id="backgroundColor" v-model="blockData.background_color" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('text_color')">
+            <label for="textColor">Text Color:</label>
+            <input type="color" id="textColor" v-model="blockData.text_color" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('text_align')">
+            <label for="textAlign">Text Align:</label>
+            <select id="textAlign" v-model="blockData.text_align">
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('padding')">
+            <label for="padding">Padding (e.g., 20px 0):</label>
+            <input type="text" id="padding" v-model="blockData.padding" />
+          </div>
+          <div v-if="currentBlockTypeConfig.includes('font_size')">
+            <label for="fontSize">Font Size:</label>
+            <select id="fontSize" v-model="blockData.font_size">
+              <option value="12px">Small (12px)</option>
+              <option value="14px">Normal (14px)</option>
+              <option value="16px">Large (16px)</option>
+              <option value="18px">Extra Large (18px)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <script setup lang="ts">
+    import { ref, computed, watch, onMounted } from 'vue';
+    import { createDirectus, rest, readItems } from '@directus/sdk';
+
+    // Assume these are props passed to this component, representing the current newsletter block
+    const props = defineProps<{
+      initialBlockData: any; // The data for the current newsletter_block item
+      initialBlockTypeId: string; // The ID of the currently selected block_type
+    }>();
+
+    const emit = defineEmits(['update:blockData']);
+
+    const config = useRuntimeConfig();
+    const directus = createDirectus(config.public.directusUrl as string).with(rest());
+
+    interface BlockType {
+      id: string;
+      name: string;
+      slug: string;
+      field_visibility_config: string[];
+    }
+
+    const blockTypes = ref<BlockType[]>([]);
+    const selectedBlockTypeId = ref<string>(props.initialBlockTypeId);
+    const blockData = ref<any>({ ...props.initialBlockData });
+
+    // Computed property to get the config for the currently selected block type
+    const currentBlockTypeConfig = computed(() => {
+      const foundType = blockTypes.value.find(type => type.id === selectedBlockTypeId.value);
+      return foundType ? foundType.field_visibility_config : [];
+    });
+
+    // Fetch block types on component mount
+    onMounted(async () => {
+      try {
+        blockTypes.value = await directus.request(
+          readItems('block_types', {
+            fields: ['id', 'name', 'slug', 'field_visibility_config']
+          })
+        );
+      } catch (e) {
+        console.error('Error fetching block types:', e);
+      }
+    });
+
+    // Watch for changes in selectedBlockTypeId to update visible fields
+    function updateVisibleFields() {
+      // When block type changes, you might want to clear or reset some fields
+      // For simplicity here, we just re-render based on new config
+      // In a real app, you might want to intelligently preserve data for common fields
+      console.log('Selected block type changed. Visible fields will update.');
+    }
+
+    // Emit updated blockData to parent component
+    watch(blockData, (newValue) => {
+      emit('update:blockData', newValue);
+    }, { deep: true });
+    </script>
+
+    <style scoped>
+    /* Add styling for your form fields here */
+    div {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input[type="text"], textarea, select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    input[type="color"] {
+      height: 38px; /* Adjust as needed */
+    }
+    </style>
     
-    if command_exists npm; then
-        npm install
-        print_success "Dependencies installed successfully"
-    elif command_exists yarn; then
-        yarn install
-        print_success "Dependencies installed successfully (using yarn)"
-    else
-        print_error "Neither npm nor yarn found. Please install Node.js and npm first."
-        exit 1
-    fi
-}
-
-run_installer() {
-    # Accept all arguments as an array
-    local installer_args=("$@")
-    
-    print_status "Running complete newsletter feature installer..."
-    
-    # Pass all received arguments to node
-    node newsletter-installer.js "${installer_args[@]}"
-    
-    if [ $? -eq 0 ]; then
-        print_success "Newsletter feature installed successfully!"
-        echo ""
-        print_status "What was installed:"
-        echo "✅ Subscribers collection with name, email, company fields"
-        echo "✅ User-friendly block creation (no JSON required!)"
-        echo "✅ Proper M2M relationships (subscribers ↔ mailing_lists)"
-        echo "✅ Proper M2O relationships (newsletters → mailing_lists)"
-        echo "✅ Enhanced MJML block system"
-        echo "✅ Automated Directus Flow for sending newsletters"
-        echo "✅ Environment configuration guidance"
-        echo ""
-        print_status "Next steps:"
-        echo "1. Copy frontend-integration/ to your Nuxt project"
-        echo "2. Follow the integration instructions in frontend-integration/README.md"
-        echo "3. **IMPORTANT**: Update your SendGrid API key in the .env file (generated by installer)"
-        echo "4. Test the complete workflow - it should work immediately!"
-    else
-        print_error "Installation failed. Check the output above for details."
-        return 1
-    fi
-}
-
-show_usage() {
-    echo "Directus Newsletter Feature - Complete Deployment Script v${VERSION}"
-    echo ""
-    echo "Features:"
-    echo "  • Subscribers collection with name, email, company"
-    echo "  • User-friendly block fields (no JSON required!)"
-    echo "  • Proper M2M relationships (subscribers ↔ mailing_lists)"
-    echo "  • Proper M2O relationships (newsletters → mailing_lists)"
-    echo "  • Enhanced block content creation"
-    echo "  • Automated Directus Flow creation for sending"
-    echo "  • Environment configuration generation"
-    echo ""
-    echo "Usage:"
-    echo "  $0 setup                                              # Download and setup installation files"
-    echo "  $0 install <directus-url> <email> <password> [frontend-url] [webhook-secret] # Install to Directus"
-    echo "  $0 full <directus-url> <email> <password> [frontend-url] [webhook-secret] # Setup and install"
-    echo ""
-    echo "Examples:"
-    echo "  $0 setup"
-    echo "  $0 install https://admin.example.com admin@example.com password"
-    echo "  $0 full https://admin.example.com admin@example.com password https://frontend.example.com my-custom-secret"
-    echo ""
-}
-
-main() {
-    echo "======================================================"
-    echo "   Newsletter Feature - Complete Deployment v${VERSION}"
-    echo "======================================================"
-    echo ""
-    echo "🎉 Enhanced with user-friendly block creation!"
-    echo "📧 Complete subscriber management system!"
-    echo "🔗 Proper relationships for all collections!"
-    echo "🚀 Now with Automated Directus Flow Creation!" # New line
-    echo ""
-
-    # Check if Node.js is installed
-    if ! command_exists node; then
-        print_error "Node.js is not installed. Please install Node.js 16+ first."
-        echo "Visit: https://nodejs.org/"
-        exit 1
-    fi
-
-    # Check Node.js version
-    NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 16 ]; then
-        print_error "Node.js 16+ is required. Current version: $(node --version)"
-        exit 1
-    fi
-
-    case "$1" in
-        "setup")
-            print_status "Setting up complete newsletter feature installation..."
-            setup_deployment_dir
-            create_package_json
-            download_complete_installer
-            create_frontend_package
-            install_dependencies
-            print_success "Setup completed! Files ready in $DEPLOYMENT_DIR"
-            echo ""
-            print_status "Next: Run installation with your Directus credentials (and optional frontend URL/webhook secret)"
-            echo "  $0 install https://your-directus-url.com admin@example.com password [https://your-frontend.com] [your-webhook-secret]"
-            ;;
-        "install")
-            if [ $# -lt 4 ]; then
-                print_error "Install command requires at least 3 arguments (directus-url, email, password)"
-                show_usage
-                exit 1
-            fi
-            cd "$DEPLOYMENT_DIR" 2>/dev/null || {
-                print_error "Installation files not found. Run '$0 setup' first."
-                exit 1
-            }
-            # Pass all arguments from $2 onwards to run_installer
-            run_installer "${@:2}"
-            ;;
-        "full")
-            if [ $# -lt 4 ]; then
-                print_error "Full command requires at least 3 arguments (directus-url, email, password)"
-                show_usage
-                exit 1
-            fi
-            print_status "Running complete setup and installation..."
-            setup_deployment_dir
-            create_package_json
-            download_complete_installer
-            create_frontend_package
-            install_dependencies
-            print_success "Setup completed!"
-            echo ""
-            # Pass all arguments from $2 onwards to run_installer
-            run_installer "${@:2}"
-            ;;
-        *)
-            show_usage
-            exit 1
-            ;;
-    esac
-}
-
-main "$@"
