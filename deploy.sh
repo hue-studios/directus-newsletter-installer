@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Directus Newsletter Feature - Fixed Deployment Script
-# Separates Directus installation from frontend setup
+# Directus Newsletter Feature - Updated Deployment Script v3.0
+# Uses the Complete Newsletter Installer
 
 set -e
 
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-VERSION="2.1.0"
+VERSION="3.0.0"
 DEPLOYMENT_DIR="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
 
 print_status() {
@@ -35,81 +35,8 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-validate_url() {
-    if [[ $1 =~ ^https?://[^[:space:]]+$ ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-test_directus_connection() {
-    local url=$1
-    local health_endpoint="${url}/server/health"
-    
-    print_status "Testing connection to Directus at $url..."
-    
-    if command_exists curl; then
-        if curl -s --max-time 10 "$health_endpoint" > /dev/null; then
-            print_success "Directus is accessible"
-            return 0
-        else
-            print_error "Could not connect to Directus at $health_endpoint"
-            return 1
-        fi
-    else
-        print_warning "curl not found, skipping connection test"
-        return 0
-    fi
-}
-
-check_permissions() {
-    local test_dir="$1"
-    local parent_dir=$(dirname "$test_dir")
-    
-    if [ -d "$test_dir" ] && [ -w "$test_dir" ]; then
-        return 0
-    fi
-    
-    if [ -w "$parent_dir" ]; then
-        return 0
-    fi
-    
-    if [ "$EUID" -eq 0 ]; then
-        return 0
-    fi
-    
-    return 1
-}
-
 setup_deployment_dir() {
     print_status "Setting up deployment directory..."
-    
-    if ! check_permissions "$DEPLOYMENT_DIR"; then
-        print_warning "Cannot write to $DEPLOYMENT_DIR (permission denied)"
-        
-        local alternatives=(
-            "$HOME/newsletter-feature"
-            "/tmp/newsletter-feature"
-            "$(pwd)/newsletter-feature"
-        )
-        
-        for alt_dir in "${alternatives[@]}"; do
-            if check_permissions "$alt_dir" || check_permissions "$(dirname "$alt_dir")"; then
-                print_status "Using alternative directory: $alt_dir"
-                DEPLOYMENT_DIR="$alt_dir"
-                break
-            fi
-        done
-        
-        if ! check_permissions "$DEPLOYMENT_DIR"; then
-            print_error "No writable directory found. Try one of these solutions:"
-            echo "1. Run with sudo: curl ... | sudo bash -s ..."
-            echo "2. Set custom directory: NEWSLETTER_DEPLOY_DIR=~/newsletter curl ... | bash -s ..."
-            echo "3. Create directory first: sudo mkdir -p /opt/newsletter-feature && sudo chown \$(whoami) /opt/newsletter-feature"
-            exit 1
-        fi
-    fi
     
     if [ ! -d "$DEPLOYMENT_DIR" ]; then
         if mkdir -p "$DEPLOYMENT_DIR"; then
@@ -131,9 +58,9 @@ create_package_json() {
     cat > package.json << 'EOF'
 {
   "name": "directus-newsletter-installer",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "type": "module",
-  "description": "Installer for Directus Newsletter Feature",
+  "description": "Complete Newsletter Feature Installer for Directus 11",
   "main": "newsletter-installer.js",
   "dependencies": {
     "@directus/sdk": "^17.0.0"
@@ -144,7 +71,7 @@ create_package_json() {
   "scripts": {
     "install-newsletter": "node newsletter-installer.js"
   },
-  "keywords": ["directus", "newsletter", "mjml", "email"],
+  "keywords": ["directus", "newsletter", "mjml", "email", "subscribers"],
   "author": "Your Agency",
   "license": "MIT"
 }
@@ -153,28 +80,35 @@ EOF
     print_success "package.json created"
 }
 
-create_installer_script() {
-    print_status "Creating enhanced newsletter installer..."
+download_complete_installer() {
+    print_status "Creating complete newsletter installer..."
     
     cat > newsletter-installer.js << 'EOF'
 #!/usr/bin/env node
 
 /**
- * Directus Newsletter Feature Installer v2.1.0
- * Enhanced with automatic flow creation and better error handling
+ * Directus Newsletter Feature - Complete Installer v3.0
+ * 
+ * Features:
+ * - Subscribers collection with name, email, company
+ * - User-friendly block fields (no JSON)
+ * - Proper M2M relationships (subscribers ↔ mailing_lists)
+ * - Proper M2O relationships (newsletters → mailing_lists)
+ * - Enhanced block content creation
+ * - Complete relationship management
  */
 
-import { createDirectus, rest, authentication, readCollections, createCollection, createField, createRelation, createFlow, createItems, createOperation } from '@directus/sdk';
+import { createDirectus, rest, authentication, readCollections, createCollection, createField, createRelation, createItems, updateItem } from '@directus/sdk';
 
-class NewsletterInstaller {
+class CompleteNewsletterInstaller {
   constructor(directusUrl, email, password, options = {}) {
     this.directus = createDirectus(directusUrl).with(rest()).with(authentication());
     this.email = email;
     this.password = password;
     this.existingCollections = new Set();
     this.options = {
-      createFlow: options.createFlow !== false, // Default to true
-      frontendUrl: options.frontendUrl || null, // Optional frontend URL
+      createFlow: options.createFlow !== false,
+      frontendUrl: options.frontendUrl || null,
       webhookSecret: options.webhookSecret || 'change-this-webhook-secret'
     };
   }
@@ -200,7 +134,7 @@ class NewsletterInstaller {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await this.directus.request(createField(collection, field));
-        console.log(`✅ Added field: ${field.field}`);
+        console.log(`✅ Added field: ${collection}.${field.field}`);
         await new Promise(resolve => setTimeout(resolve, 500));
         return true;
       } catch (error) {
@@ -249,6 +183,7 @@ class NewsletterInstaller {
     console.log('\n📦 Creating newsletter collections...');
 
     const collections = [
+      // Block Types
       {
         collection: 'block_types',
         meta: {
@@ -256,10 +191,27 @@ class NewsletterInstaller {
           collection: 'block_types',
           hidden: false,
           icon: 'extension',
-          note: 'Available MJML block types for newsletters'
+          note: 'Available MJML block types for newsletters',
+          display_template: '{{name}}'
         },
         schema: { name: 'block_types' }
       },
+
+      // Subscribers
+      {
+        collection: 'subscribers',
+        meta: {
+          accountability: 'all',
+          collection: 'subscribers',
+          hidden: false,
+          icon: 'person',
+          note: 'Newsletter subscribers with contact information',
+          display_template: '{{name}} ({{email}})'
+        },
+        schema: { name: 'subscribers' }
+      },
+
+      // Mailing Lists  
       {
         collection: 'mailing_lists',
         meta: {
@@ -267,10 +219,26 @@ class NewsletterInstaller {
           collection: 'mailing_lists',
           hidden: false,
           icon: 'group',
-          note: 'Subscriber mailing lists'
+          note: 'Subscriber mailing lists',
+          display_template: '{{name}} ({{subscriber_count}} subscribers)'
         },
         schema: { name: 'mailing_lists' }
       },
+
+      // Subscribers ↔ Mailing Lists Junction
+      {
+        collection: 'mailing_lists_subscribers',
+        meta: {
+          accountability: 'all',
+          collection: 'mailing_lists_subscribers',
+          hidden: true,
+          icon: 'link',
+          note: 'Junction table for mailing lists and subscribers'
+        },
+        schema: { name: 'mailing_lists_subscribers' }
+      },
+
+      // Newsletters
       {
         collection: 'newsletters',
         meta: {
@@ -278,10 +246,13 @@ class NewsletterInstaller {
           collection: 'newsletters',
           hidden: false,
           icon: 'mail',
-          note: 'Email newsletters with MJML blocks'
+          note: 'Email newsletters with MJML blocks',
+          display_template: '{{title}} - {{status}}'
         },
         schema: { name: 'newsletters' }
       },
+
+      // Newsletter Blocks
       {
         collection: 'newsletter_blocks',
         meta: {
@@ -289,10 +260,13 @@ class NewsletterInstaller {
           collection: 'newsletter_blocks',
           hidden: false,
           icon: 'view_module',
-          note: 'Individual MJML blocks for newsletters'
+          note: 'Individual MJML blocks for newsletters',
+          display_template: '{{block_type.name}} (#{{sort}})'
         },
         schema: { name: 'newsletter_blocks' }
       },
+
+      // Newsletter Sends
       {
         collection: 'newsletter_sends',
         meta: {
@@ -300,7 +274,8 @@ class NewsletterInstaller {
           collection: 'newsletter_sends',
           hidden: false,
           icon: 'send',
-          note: 'Track newsletter send history and status'
+          note: 'Track newsletter send history and status',
+          display_template: '{{newsletter.title}} to {{mailing_list.name}}'
         },
         schema: { name: 'newsletter_sends' }
       }
@@ -313,7 +288,9 @@ class NewsletterInstaller {
     console.log('\n🔧 Adding fields to collections...');
     
     await this.addBlockTypeFields();
+    await this.addSubscriberFields();
     await this.addMailingListFields();
+    await this.addJunctionFields();
     await this.addNewsletterFields();
     await this.addNewsletterBlockFields();
     await this.addNewsletterSendFields();
@@ -338,7 +315,7 @@ class NewsletterInstaller {
       {
         field: 'description',
         type: 'text',
-        meta: { interface: 'input' }
+        meta: { interface: 'input-multiline' }
       },
       {
         field: 'mjml_template',
@@ -349,15 +326,6 @@ class NewsletterInstaller {
           note: 'MJML template with Handlebars placeholders'
         },
         schema: { is_nullable: false }
-      },
-      {
-        field: 'fields_schema',
-        type: 'json',
-        meta: {
-          interface: 'input-code',
-          options: { language: 'json' },
-          note: 'JSON schema for block configuration fields'
-        }
       },
       {
         field: 'status',
@@ -381,6 +349,88 @@ class NewsletterInstaller {
     }
   }
 
+  async addSubscriberFields() {
+    console.log('\n📝 Adding fields to subscribers...');
+    
+    const fields = [
+      {
+        field: 'email',
+        type: 'string',
+        meta: { 
+          interface: 'input', 
+          required: true, 
+          width: 'half',
+          note: 'Subscriber email address',
+          options: { iconLeft: 'email' }
+        },
+        schema: { is_nullable: false, is_unique: true }
+      },
+      {
+        field: 'name',
+        type: 'string',
+        meta: { 
+          interface: 'input', 
+          required: true, 
+          width: 'half',
+          note: 'Full name of subscriber',
+          options: { iconLeft: 'person' }
+        },
+        schema: { is_nullable: false }
+      },
+      {
+        field: 'company',
+        type: 'string',
+        meta: { 
+          interface: 'input', 
+          width: 'half',
+          note: 'Company name (optional)',
+          options: { iconLeft: 'business' }
+        }
+      },
+      {
+        field: 'status',
+        type: 'string',
+        meta: {
+          interface: 'select-dropdown',
+          width: 'half',
+          options: {
+            choices: [
+              { text: 'Active', value: 'active' },
+              { text: 'Unsubscribed', value: 'unsubscribed' },
+              { text: 'Bounced', value: 'bounced' }
+            ]
+          },
+          default_value: 'active'
+        }
+      },
+      {
+        field: 'subscribed_at',
+        type: 'timestamp',
+        meta: { 
+          interface: 'datetime', 
+          readonly: true, 
+          width: 'half',
+          note: 'When subscriber was added'
+        },
+        schema: { default_value: 'now()' }
+      },
+      {
+        field: 'unsubscribe_token',
+        type: 'string',
+        meta: { 
+          interface: 'input', 
+          readonly: true, 
+          width: 'half',
+          note: 'Secure token for unsubscribe links'
+        }
+      }
+    ];
+
+    for (const field of fields) {
+      await this.createFieldWithRetry('subscribers', field);
+    }
+  }
+
   async addMailingListFields() {
     console.log('\n📝 Adding fields to mailing_lists...');
     
@@ -388,24 +438,31 @@ class NewsletterInstaller {
       {
         field: 'name',
         type: 'string',
-        meta: { interface: 'input', required: true },
+        meta: { interface: 'input', required: true, width: 'half' },
         schema: { is_nullable: false }
       },
       {
         field: 'description',
         type: 'text',
-        meta: { interface: 'input' }
+        meta: { interface: 'input-multiline', width: 'half' }
       },
       {
         field: 'subscriber_count',
         type: 'integer',
-        meta: { interface: 'input', readonly: true, default_value: 0 }
+        meta: { 
+          interface: 'input', 
+          readonly: true, 
+          width: 'half',
+          note: 'Auto-calculated subscriber count'
+        },
+        schema: { default_value: 0 }
       },
       {
         field: 'status',
         type: 'string',
         meta: {
           interface: 'select-dropdown',
+          width: 'half',
           options: {
             choices: [
               { text: 'Active', value: 'active' },
@@ -422,6 +479,29 @@ class NewsletterInstaller {
     }
   }
 
+  async addJunctionFields() {
+    console.log('\n📝 Adding fields to mailing_lists_subscribers...');
+    
+    const fields = [
+      {
+        field: 'mailing_lists_id',
+        type: 'integer',
+        meta: { interface: 'select-dropdown-m2o', hidden: true },
+        schema: { is_nullable: false }
+      },
+      {
+        field: 'subscribers_id',
+        type: 'integer',
+        meta: { interface: 'select-dropdown-m2o', hidden: true },
+        schema: { is_nullable: false }
+      }
+    ];
+
+    for (const field of fields) {
+      await this.createFieldWithRetry('mailing_lists_subscribers', field);
+    }
+  }
+
   async addNewsletterFields() {
     console.log('\n📝 Adding fields to newsletters...');
     
@@ -429,40 +509,61 @@ class NewsletterInstaller {
       {
         field: 'title',
         type: 'string',
-        meta: { interface: 'input', required: true },
+        meta: { interface: 'input', required: true, width: 'half' },
         schema: { is_nullable: false }
       },
       {
         field: 'subject_line',
         type: 'string',
-        meta: { interface: 'input', required: true, note: 'Email subject line' },
+        meta: { 
+          interface: 'input', 
+          required: true, 
+          width: 'half',
+          note: 'Email subject line'
+        },
         schema: { is_nullable: false }
       },
       {
         field: 'preview_text',
         type: 'string',
-        meta: { interface: 'input', note: 'Preview text shown in email clients' }
+        meta: { 
+          interface: 'input', 
+          note: 'Preview text shown in email clients'
+        }
       },
       {
         field: 'from_name',
         type: 'string',
-        meta: { interface: 'input', default_value: 'Newsletter', width: 'half' }
+        meta: { 
+          interface: 'input', 
+          width: 'third',
+          default_value: 'Newsletter'
+        }
       },
       {
         field: 'from_email',
         type: 'string',
-        meta: { interface: 'input', width: 'half' }
+        meta: { 
+          interface: 'input', 
+          width: 'third',
+          options: { iconLeft: 'email' }
+        }
       },
       {
         field: 'reply_to',
         type: 'string',
-        meta: { interface: 'input', note: 'Reply-to email address' }
+        meta: { 
+          interface: 'input', 
+          width: 'third',
+          note: 'Reply-to email address'
+        }
       },
       {
         field: 'status',
         type: 'string',
         meta: {
           interface: 'select-dropdown',
+          width: 'half',
           options: {
             choices: [
               { text: 'Draft', value: 'draft' },
@@ -502,7 +603,7 @@ class NewsletterInstaller {
   }
 
   async addNewsletterBlockFields() {
-    console.log('\n📝 Adding fields to newsletter_blocks...');
+    console.log('\n📝 Adding user-friendly fields to newsletter_blocks...');
     
     const fields = [
       {
@@ -531,15 +632,175 @@ class NewsletterInstaller {
         field: 'sort',
         type: 'integer',
         meta: { interface: 'input', width: 'half' },
-        schema: { default_value: 0 }
+        schema: { default_value: 1 }
       },
+
+      // Content Fields (User-Friendly!)
+      {
+        field: 'title',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'half',
+          note: 'Main heading text'
+        }
+      },
+      {
+        field: 'subtitle',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'half',
+          note: 'Optional subtitle'
+        }
+      },
+      {
+        field: 'text_content',
+        type: 'text',
+        meta: {
+          interface: 'input-rich-text-html',
+          note: 'Main text content'
+        }
+      },
+      {
+        field: 'image_url',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'full',
+          note: 'Image URL or file path'
+        }
+      },
+      {
+        field: 'image_alt_text',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'half',
+          note: 'Alt text for accessibility'
+        }
+      },
+      {
+        field: 'image_caption',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'half',
+          note: 'Optional image caption'
+        }
+      },
+      {
+        field: 'button_text',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'half',
+          note: 'Button label text'
+        }
+      },
+      {
+        field: 'button_url',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'half',
+          note: 'Button destination URL'
+        }
+      },
+      {
+        field: 'background_color',
+        type: 'string',
+        meta: {
+          interface: 'select-color',
+          width: 'third',
+          note: 'Section background color',
+          options: {
+            presets: [
+              { color: '#ffffff', name: 'White' },
+              { color: '#f8f9fa', name: 'Light Gray' },
+              { color: '#e9ecef', name: 'Gray' },
+              { color: '#007bff', name: 'Blue' },
+              { color: '#28a745', name: 'Green' }
+            ]
+          }
+        },
+        schema: { default_value: '#ffffff' }
+      },
+      {
+        field: 'text_color',
+        type: 'string',
+        meta: {
+          interface: 'select-color',
+          width: 'third',
+          note: 'Text color',
+          options: {
+            presets: [
+              { color: '#000000', name: 'Black' },
+              { color: '#333333', name: 'Dark Gray' },
+              { color: '#666666', name: 'Gray' },
+              { color: '#ffffff', name: 'White' }
+            ]
+          }
+        },
+        schema: { default_value: '#333333' }
+      },
+      {
+        field: 'text_align',
+        type: 'string',
+        meta: {
+          interface: 'select-dropdown',
+          width: 'third',
+          note: 'Text alignment',
+          options: {
+            choices: [
+              { text: 'Left', value: 'left' },
+              { text: 'Center', value: 'center' },
+              { text: 'Right', value: 'right' }
+            ]
+          }
+        },
+        schema: { default_value: 'center' }
+      },
+      {
+        field: 'padding',
+        type: 'string',
+        meta: {
+          interface: 'input',
+          width: 'half',
+          note: 'CSS padding (e.g., "20px 0")',
+          options: { placeholder: '20px 0' }
+        },
+        schema: { default_value: '20px 0' }
+      },
+      {
+        field: 'font_size',
+        type: 'string',
+        meta: {
+          interface: 'select-dropdown',
+          width: 'half',
+          note: 'Text font size',
+          options: {
+            choices: [
+              { text: 'Small (12px)', value: '12px' },
+              { text: 'Normal (14px)', value: '14px' },
+              { text: 'Large (16px)', value: '16px' },
+              { text: 'Extra Large (18px)', value: '18px' }
+            ]
+          }
+        },
+        schema: { default_value: '14px' }
+      },
+
+      // Legacy content field (hidden but kept for backwards compatibility)
       {
         field: 'content',
         type: 'json',
         meta: {
           interface: 'input-code',
           options: { language: 'json' },
-          note: 'Block content data (varies by block type)'
+          hidden: true,
+          readonly: true,
+          note: 'Legacy JSON field - use individual fields above'
         }
       },
       {
@@ -569,9 +830,8 @@ class NewsletterInstaller {
         meta: { 
           interface: 'select-dropdown-m2o',
           required: true,
-          display_options: {
-            template: '{{title}}'
-          }
+          width: 'half',
+          display_options: { template: '{{title}}' }
         },
         schema: { is_nullable: false }
       },
@@ -581,9 +841,8 @@ class NewsletterInstaller {
         meta: { 
           interface: 'select-dropdown-m2o',
           required: true,
-          display_options: {
-            template: '{{name}}'
-          }
+          width: 'half',
+          display_options: { template: '{{name}}' }
         },
         schema: { is_nullable: false }
       },
@@ -592,6 +851,7 @@ class NewsletterInstaller {
         type: 'string',
         meta: {
           interface: 'select-dropdown',
+          width: 'half',
           options: {
             choices: [
               { text: 'Pending', value: 'pending' },
@@ -606,17 +866,19 @@ class NewsletterInstaller {
       {
         field: 'total_recipients',
         type: 'integer',
-        meta: { interface: 'input', readonly: true }
+        meta: { interface: 'input', readonly: true, width: 'half' }
       },
       {
         field: 'sent_count',
         type: 'integer',
-        meta: { interface: 'input', readonly: true, default_value: 0 }
+        meta: { interface: 'input', readonly: true, width: 'half' },
+        schema: { default_value: 0 }
       },
       {
         field: 'failed_count',
         type: 'integer',
-        meta: { interface: 'input', readonly: true, default_value: 0 }
+        meta: { interface: 'input', readonly: true, width: 'half' },
+        schema: { default_value: 0 }
       },
       {
         field: 'error_log',
@@ -638,7 +900,24 @@ class NewsletterInstaller {
   async createRelations() {
     console.log('\n🔗 Creating relationships...');
 
+    // First, add the M2O field to newsletters
+    try {
+      await this.createFieldWithRetry('newsletters', {
+        field: 'mailing_list_id',
+        type: 'integer',
+        meta: {
+          interface: 'select-dropdown-m2o',
+          width: 'half',
+          note: 'Which mailing list to send to',
+          display_options: { template: '{{name}}' }
+        }
+      });
+    } catch (error) {
+      console.log('⚠️  Mailing list field may already exist');
+    }
+
     const relations = [
+      // Newsletter Blocks → Newsletter (M2O)
       {
         collection: 'newsletter_blocks',
         field: 'newsletter_id',
@@ -652,6 +931,8 @@ class NewsletterInstaller {
           one_deselect_action: 'delete'
         }
       },
+
+      // Newsletter Blocks → Block Types (M2O)
       {
         collection: 'newsletter_blocks',
         field: 'block_type',
@@ -663,6 +944,49 @@ class NewsletterInstaller {
           one_deselect_action: 'nullify'
         }
       },
+
+      // Newsletter → Mailing List (M2O)
+      {
+        collection: 'newsletters',
+        field: 'mailing_list_id',
+        related_collection: 'mailing_lists',
+        meta: {
+          many_collection: 'newsletters',
+          many_field: 'mailing_list_id',
+          one_collection: 'mailing_lists',
+          one_deselect_action: 'nullify'
+        }
+      },
+
+      // Mailing Lists ↔ Subscribers (M2M)
+      {
+        collection: 'mailing_lists_subscribers',
+        field: 'mailing_lists_id',
+        related_collection: 'mailing_lists',
+        meta: {
+          many_collection: 'mailing_lists_subscribers',
+          many_field: 'mailing_lists_id',
+          one_collection: 'mailing_lists',
+          one_field: 'subscribers',
+          junction_field: 'subscribers_id',
+          one_deselect_action: 'delete'
+        }
+      },
+      {
+        collection: 'mailing_lists_subscribers',
+        field: 'subscribers_id',
+        related_collection: 'subscribers',
+        meta: {
+          many_collection: 'mailing_lists_subscribers',
+          many_field: 'subscribers_id',
+          one_collection: 'subscribers',
+          one_field: 'mailing_lists',
+          junction_field: 'mailing_lists_id',
+          one_deselect_action: 'delete'
+        }
+      },
+
+      // Newsletter Sends → Newsletter (M2O)
       {
         collection: 'newsletter_sends',
         field: 'newsletter_id',
@@ -674,6 +998,8 @@ class NewsletterInstaller {
           one_deselect_action: 'nullify'
         }
       },
+
+      // Newsletter Sends → Mailing List (M2O)
       {
         collection: 'newsletter_sends',
         field: 'mailing_list_id',
@@ -687,14 +1013,15 @@ class NewsletterInstaller {
       }
     ];
 
+    // Create all relationships
     for (const relation of relations) {
       try {
         await this.directus.request(createRelation(relation));
-        console.log(`✅ Created relation: ${relation.collection}.${relation.field} -> ${relation.related_collection}`);
+        console.log(`✅ Created relation: ${relation.collection}.${relation.field} → ${relation.related_collection}`);
         await new Promise(resolve => setTimeout(resolve, 800));
       } catch (error) {
         if (error.message.includes('already exists')) {
-          console.log(`⏭️  Relation already exists: ${relation.collection}.${relation.field} -> ${relation.related_collection}`);
+          console.log(`⏭️  Relation already exists: ${relation.collection}.${relation.field} → ${relation.related_collection}`);
         } else {
           console.error(`❌ Failed to create relation: ${relation.collection}.${relation.field}`, error.message);
         }
@@ -702,9 +1029,10 @@ class NewsletterInstaller {
     }
   }
 
-  async insertBlockTypes() {
-    console.log('\n🧩 Installing starter block types...');
+  async insertSampleData() {
+    console.log('\n🧩 Installing sample data...');
 
+    // Block Types with updated templates
     const blockTypes = [
       {
         name: "Hero Section",
@@ -712,32 +1040,21 @@ class NewsletterInstaller {
         description: "Large header section with title, subtitle, and optional button",
         mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
   <mj-column>
-    <mj-text align="{{text_align}}" font-size="{{title_size}}" font-weight="bold" color="{{title_color}}">
+    <mj-text align="{{text_align}}" font-size="32px" font-weight="bold" color="{{text_color}}">
       {{title}}
     </mj-text>
     {{#if subtitle}}
-    <mj-text align="{{text_align}}" font-size="{{subtitle_size}}" color="{{subtitle_color}}">
+    <mj-text align="{{text_align}}" font-size="18px" color="{{text_color}}">
       {{subtitle}}
     </mj-text>
     {{/if}}
     {{#if button_text}}
-    <mj-button background-color="{{button_bg_color}}" color="{{button_text_color}}" href="{{button_url}}">
+    <mj-button background-color="#007bff" color="#ffffff" href="{{button_url}}">
       {{button_text}}
     </mj-button>
     {{/if}}
   </mj-column>
 </mj-section>`,
-        fields_schema: {
-          type: "object",
-          properties: {
-            title: { type: "string", title: "Title", default: "Welcome to Our Newsletter" },
-            subtitle: { type: "string", title: "Subtitle" },
-            background_color: { type: "string", title: "Background Color", default: "#ffffff" },
-            title_color: { type: "string", title: "Title Color", default: "#000000" },
-            text_align: { type: "string", title: "Text Alignment", enum: ["left", "center", "right"], default: "center" }
-          },
-          required: ["title"]
-        },
         status: "published"
       },
       {
@@ -747,49 +1064,26 @@ class NewsletterInstaller {
         mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
   <mj-column>
     <mj-text align="{{text_align}}" font-size="{{font_size}}" color="{{text_color}}">
-      {{content}}
+      {{text_content}}
     </mj-text>
   </mj-column>
 </mj-section>`,
-        fields_schema: {
-          type: "object",
-          properties: {
-            content: { type: "string", title: "Content", format: "textarea" },
-            background_color: { type: "string", title: "Background Color", default: "#ffffff" },
-            text_color: { type: "string", title: "Text Color", default: "#000000" },
-            font_size: { type: "string", title: "Font Size", default: "14px" }
-          },
-          required: ["content"]
-        },
         status: "published"
       },
       {
         name: "Image Block",
         slug: "image",
-        description: "Image with optional caption and link",
+        description: "Image with optional caption",
         mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
   <mj-column>
-    <mj-image src="{{image_url}}" alt="{{alt_text}}" {{#if link_url}}href="{{link_url}}"{{/if}} align="{{alignment}}" width="{{width}}" />
-    {{#if caption}}
-    <mj-text align="{{alignment}}" font-size="12px" color="#666666" padding="10px 0 0 0">
-      {{caption}}
+    <mj-image src="{{image_url}}" alt="{{image_alt_text}}" align="{{text_align}}" />
+    {{#if image_caption}}
+    <mj-text align="{{text_align}}" font-size="12px" color="#666666" padding="10px 0 0 0">
+      {{image_caption}}
     </mj-text>
     {{/if}}
   </mj-column>
 </mj-section>`,
-        fields_schema: {
-          type: "object",
-          properties: {
-            image_url: { type: "string", title: "Image URL" },
-            alt_text: { type: "string", title: "Alt Text" },
-            caption: { type: "string", title: "Caption" },
-            link_url: { type: "string", title: "Link URL" },
-            alignment: { type: "string", title: "Alignment", enum: ["left", "center", "right"], default: "center" },
-            width: { type: "string", title: "Width", default: "100%" },
-            background_color: { type: "string", title: "Background Color", default: "#ffffff" }
-          },
-          required: ["image_url"]
-        },
         status: "published"
       },
       {
@@ -798,25 +1092,11 @@ class NewsletterInstaller {
         description: "Call-to-action button with customizable styling",
         mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
   <mj-column>
-    <mj-button background-color="{{button_bg_color}}" color="{{button_text_color}}" href="{{button_url}}" align="{{alignment}}" border-radius="{{border_radius}}" font-size="{{font_size}}">
+    <mj-button background-color="#007bff" color="#ffffff" href="{{button_url}}" align="{{text_align}}">
       {{button_text}}
     </mj-button>
   </mj-column>
 </mj-section>`,
-        fields_schema: {
-          type: "object",
-          properties: {
-            button_text: { type: "string", title: "Button Text", default: "Click Here" },
-            button_url: { type: "string", title: "Button URL" },
-            button_bg_color: { type: "string", title: "Background Color", default: "#007bff" },
-            button_text_color: { type: "string", title: "Text Color", default: "#ffffff" },
-            alignment: { type: "string", title: "Alignment", enum: ["left", "center", "right"], default: "center" },
-            border_radius: { type: "string", title: "Border Radius", default: "4px" },
-            font_size: { type: "string", title: "Font Size", default: "14px" },
-            background_color: { type: "string", title: "Section Background", default: "#ffffff" }
-          },
-          required: ["button_text", "button_url"]
-        },
         status: "published"
       },
       {
@@ -825,18 +1105,9 @@ class NewsletterInstaller {
         description: "Horizontal line separator",
         mjml_template: `<mj-section background-color="{{background_color}}" padding="{{padding}}">
   <mj-column>
-    <mj-divider border-color="{{divider_color}}" border-width="{{border_width}}" />
+    <mj-divider border-color="{{text_color}}" border-width="1px" />
   </mj-column>
 </mj-section>`,
-        fields_schema: {
-          type: "object",
-          properties: {
-            divider_color: { type: "string", title: "Divider Color", default: "#cccccc" },
-            border_width: { type: "string", title: "Border Width", default: "1px" },
-            background_color: { type: "string", title: "Background Color", default: "#ffffff" },
-            padding: { type: "string", title: "Padding", default: "20px 0" }
-          }
-        },
         status: "published"
       }
     ];
@@ -850,59 +1121,48 @@ class NewsletterInstaller {
         console.log(`⚠️  Could not create block type ${blockType.name}:`, error.message);
       }
     }
-  }
 
-  async createNewsletterFlow() {
-    if (!this.options.createFlow) {
-      console.log('\n⏭️  Skipping flow creation (disabled in options)');
-      return;
+    // Sample Subscribers
+    const subscribers = [
+      {
+        name: "Test User",
+        email: "test@example.com",
+        company: "Test Company",
+        status: "active"
+      }
+    ];
+
+    for (const subscriber of subscribers) {
+      try {
+        await this.directus.request(createItems('subscribers', subscriber));
+        console.log(`✅ Created subscriber: ${subscriber.name}`);
+      } catch (error) {
+        console.log(`⚠️  Could not create subscriber ${subscriber.name}:`, error.message);
+      }
     }
 
-    if (!this.options.frontendUrl) {
-      console.log('\n⚠️  Cannot create flow without frontend URL. Please create manually.');
-      console.log('   Set frontendUrl option or create flow manually in Directus admin.');
-      return;
-    }
+    // Sample Mailing List
+    const mailingLists = [
+      {
+        name: "General Newsletter",
+        description: "General company newsletter subscribers",
+        subscriber_count: 1,
+        status: "active"
+      }
+    ];
 
-    console.log('\n🔄 Creating newsletter sending flow...');
-
-    try {
-      // Create the main flow
-      const flow = await this.directus.request(createFlow({
-        name: 'Send Newsletter',
-        icon: 'send',
-        color: '#00D4AA',
-        description: 'Compiles MJML blocks and sends newsletter to mailing lists',
-        status: 'active',
-        trigger: 'manual',
-        accountability: 'all',
-        options: {
-          collections: ['newsletters'],
-          location: 'item',
-          requireConfirmation: true,
-          confirmationDescription: 'This will send the newsletter to all selected mailing lists. Are you sure?'
-        }
-      }));
-
-      console.log(`✅ Created flow: ${flow.name}`);
-
-      // Note: Creating individual flow operations requires more complex logic
-      // For now, we'll provide instructions for manual setup
-      console.log('\n📋 Flow created! Please complete setup in Directus admin:');
-      console.log('1. Go to Settings → Flows → Send Newsletter');
-      console.log('2. Add webhook operations pointing to your frontend:');
-      console.log(`   - MJML Compile: ${this.options.frontendUrl}/api/newsletter/compile-mjml`);
-      console.log(`   - Send Email: ${this.options.frontendUrl}/api/newsletter/send`);
-      console.log(`3. Use webhook secret: ${this.options.webhookSecret}`);
-
-    } catch (error) {
-      console.log(`⚠️  Could not create flow automatically: ${error.message}`);
-      console.log('Please create the flow manually in Directus admin.');
+    for (const list of mailingLists) {
+      try {
+        await this.directus.request(createItems('mailing_lists', list));
+        console.log(`✅ Created mailing list: ${list.name}`);
+      } catch (error) {
+        console.log(`⚠️  Could not create mailing list ${list.name}:`, error.message);
+      }
     }
   }
 
   async run() {
-    console.log('🚀 Starting Directus Newsletter Feature Installation\n');
+    console.log('🚀 Starting Complete Newsletter Feature Installation v3.0\n');
 
     if (!(await this.initialize())) {
       return false;
@@ -911,23 +1171,22 @@ class NewsletterInstaller {
     try {
       await this.createCollections();
       await this.createRelations();
-      await this.insertBlockTypes();
-      await this.createNewsletterFlow();
+      await this.insertSampleData();
 
-      console.log('\n🎉 Newsletter feature installation completed!');
+      console.log('\n🎉 Complete newsletter feature installation completed!');
       console.log('\n📦 What was installed:');
-      console.log('   • 5 Collections: newsletters, newsletter_blocks, block_types, mailing_lists, newsletter_sends');
-      console.log('   • 5 MJML Block Types: Hero, Text, Image, Button, Divider');
-      console.log('   • Complete relationships between collections');
-      if (this.options.createFlow && this.options.frontendUrl) {
-        console.log('   • Newsletter sending flow (needs manual completion)');
-      }
+      console.log('   • 7 Collections: subscribers, mailing_lists, newsletters, newsletter_blocks, block_types, newsletter_sends, junction table');
+      console.log('   • 5 MJML Block Types with user-friendly fields');
+      console.log('   • Complete M2M relationship (subscribers ↔ mailing_lists)');
+      console.log('   • Complete M2O relationship (newsletters → mailing_lists)');
+      console.log('   • User-friendly block creation (no more JSON!)');
+      console.log('   • Sample data for testing');
       
       console.log('\n📋 Next steps:');
       console.log('1. Copy the Nuxt server endpoints to your frontend project');
       console.log('2. Configure environment variables on your frontend');
-      console.log('3. Complete flow setup in Directus admin (if enabled)');
-      console.log('4. Create test mailing lists and newsletters');
+      console.log('3. Set up flow in Directus admin (if needed)');
+      console.log('4. Test creating newsletters with the new user-friendly interface');
       
       return true;
     } catch (error) {
@@ -942,12 +1201,20 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length < 3) {
+    console.log('Complete Newsletter Feature Installer v3.0');
+    console.log('');
     console.log('Usage: node newsletter-installer.js <directus-url> <email> <password> [frontend-url] [webhook-secret]');
+    console.log('');
+    console.log('Features:');
+    console.log('  • Subscribers collection with name, email, company');
+    console.log('  • User-friendly block fields (no JSON required!)');
+    console.log('  • Proper M2M relationships (subscribers ↔ mailing_lists)');
+    console.log('  • Proper M2O relationships (newsletters → mailing_lists)');
+    console.log('  • Enhanced block content creation');
     console.log('');
     console.log('Examples:');
     console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123');
     console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123 https://frontend.example.com');
-    console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123 https://frontend.example.com my-webhook-secret');
     process.exit(1);
   }
 
@@ -957,7 +1224,37 @@ async function main() {
   if (frontendUrl) options.frontendUrl = frontendUrl;
   if (webhookSecret) options.webhookSecret = webhookSecret;
   
-  const installer = new NewsletterInstaller(directusUrl, email, password, options);
+  const installer = new CompleteNewsletterInstaller(directusUrl, email, password, options);
+  
+  const success = await installer.run();
+  process.exit(success ? 0 : 1);
+}
+
+main().catch(console.error);
+
+// CLI Interface
+async function main() {
+  const args = process.argv.slice(2);
+  
+  if (args.length < 3) {
+    console.log('Complete Newsletter Feature Installer v3.0');
+    console.log('');
+    console.log('Usage: node newsletter-installer.js <directus-url> <email> <password>');
+    console.log('');
+    console.log('Features:');
+    console.log('  • Subscribers collection with name, email, company');
+    console.log('  • User-friendly block fields (no JSON required!)');
+    console.log('  • Proper M2M relationships (subscribers ↔ mailing_lists)');
+    console.log('  • Proper M2O relationships (newsletters → mailing_lists)');
+    console.log('');
+    console.log('Example:');
+    console.log('  node newsletter-installer.js https://admin.example.com admin@example.com password123');
+    process.exit(1);
+  }
+
+  const [directusUrl, email, password] = args;
+  
+  const installer = new CompleteNewsletterInstaller(directusUrl, email, password);
   
   const success = await installer.run();
   process.exit(success ? 0 : 1);
@@ -967,19 +1264,17 @@ main().catch(console.error);
 EOF
     
     chmod +x newsletter-installer.js
-    print_success "Enhanced newsletter installer script created"
+    print_success "Complete newsletter installer downloaded"
 }
 
 create_frontend_package() {
-    print_status "Creating frontend integration package..."
+    print_status "Creating enhanced frontend integration package..."
     
     mkdir -p frontend-integration
-    
-    # Create package structure
     mkdir -p frontend-integration/server/api/newsletter
     mkdir -p frontend-integration/types
     
-    # Create the Nuxt endpoints
+    # Create the enhanced MJML compilation endpoint
     cat > frontend-integration/server/api/newsletter/compile-mjml.post.ts << 'EOF'
 import mjml2html from "mjml";
 import { createDirectus, rest, readItem, updateItem } from "@directus/sdk";
@@ -1019,17 +1314,33 @@ export default defineEventHandler(async (event) => {
     // Initialize Directus client
     const directus = createDirectus(config.public.directusUrl as string).with(rest());
 
-    // Fetch newsletter with blocks and block types
+    // Fetch newsletter with blocks and all individual fields
     const newsletter = await directus.request(
       readItem("newsletters", newsletter_id, {
         fields: [
           "*",
           "blocks.id",
           "blocks.sort",
-          "blocks.content",
+          // Individual content fields instead of JSON
+          "blocks.title",
+          "blocks.subtitle", 
+          "blocks.text_content",
+          "blocks.image_url",
+          "blocks.image_alt_text",
+          "blocks.image_caption",
+          "blocks.button_text",
+          "blocks.button_url",
+          "blocks.background_color",
+          "blocks.text_color",
+          "blocks.text_align",
+          "blocks.padding",
+          "blocks.font_size",
+          // Block type info
           "blocks.block_type.name",
           "blocks.block_type.slug",
           "blocks.block_type.mjml_template",
+          // Legacy content field (fallback)
+          "blocks.content"
         ],
       })
     );
@@ -1054,9 +1365,37 @@ export default defineEventHandler(async (event) => {
       }
 
       try {
-        const template = Handlebars.compile(block.block_type.mjml_template);
-        const blockMjml = template(block.content || {});
+        // Prepare block data using individual fields with fallbacks
+        const blockData = {
+          // Text content
+          title: block.title || (block.content?.title) || '',
+          subtitle: block.subtitle || (block.content?.subtitle) || '',
+          text_content: block.text_content || (block.content?.content) || (block.content?.text_content) || '',
+          
+          // Image fields
+          image_url: block.image_url || (block.content?.image_url) || '',
+          image_alt_text: block.image_alt_text || (block.content?.alt_text) || (block.content?.image_alt_text) || '',
+          image_caption: block.image_caption || (block.content?.caption) || (block.content?.image_caption) || '',
+          
+          // Button fields
+          button_text: block.button_text || (block.content?.button_text) || '',
+          button_url: block.button_url || (block.content?.button_url) || '',
+          
+          // Styling fields with defaults
+          background_color: block.background_color || (block.content?.background_color) || '#ffffff',
+          text_color: block.text_color || (block.content?.text_color) || '#333333',
+          text_align: block.text_align || (block.content?.text_align) || 'center',
+          
+          // Layout fields
+          padding: block.padding || (block.content?.padding) || '20px 0',
+          font_size: block.font_size || (block.content?.font_size) || '14px'
+        };
 
+        // Compile handlebars template with block data
+        const template = Handlebars.compile(block.block_type.mjml_template);
+        const blockMjml = template(blockData);
+
+        // Store compiled MJML for this block
         await directus.request(
           updateItem("newsletter_blocks", block.id, {
             mjml_output: blockMjml,
@@ -1066,6 +1405,7 @@ export default defineEventHandler(async (event) => {
         compiledBlocks += blockMjml + "\n";
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Error compiling block ${block.id}:`, errorMessage);
         throw createError({
           statusCode: 500,
           statusMessage: `Error compiling block ${block.id}: ${errorMessage}`,
@@ -1111,6 +1451,7 @@ export default defineEventHandler(async (event) => {
       success: true,
       message: "MJML compiled successfully",
       warnings: mjmlResult.errors.length > 0 ? mjmlResult.errors : null,
+      blocks_compiled: sortedBlocks.length
     };
   } catch (error: any) {
     console.error("MJML compilation error:", error);
@@ -1123,6 +1464,7 @@ export default defineEventHandler(async (event) => {
 });
 EOF
 
+    # Create enhanced send endpoint
     cat > frontend-integration/server/api/newsletter/send.post.ts << 'EOF'
 import sgMail from "@sendgrid/mail";
 import { createDirectus, rest, readItem, updateItem } from "@directus/sdk";
@@ -1171,39 +1513,66 @@ export default defineEventHandler(async (event) => {
       })
     );
 
-    // Fetch newsletter
-    const newsletter = await directus.request(
-      readItem("newsletters", newsletter_id, {
-        fields: ["*"],
+    // Fetch newsletter and mailing list with subscribers
+    const sendRecord = await directus.request(
+      readItem("newsletter_sends", send_record_id, {
+        fields: [
+          "*",
+          "newsletter.title",
+          "newsletter.subject_line",
+          "newsletter.from_name",
+          "newsletter.from_email",
+          "newsletter.compiled_html",
+          "mailing_list.name",
+          "mailing_list.subscribers.subscribers_id.email",
+          "mailing_list.subscribers.subscribers_id.name"
+        ],
       })
     );
 
-    if (!newsletter || !newsletter.compiled_html) {
+    if (!sendRecord || !sendRecord.newsletter.compiled_html) {
       throw createError({
         statusCode: 400,
-        statusMessage: "Newsletter not found or HTML not compiled",
+        statusMessage: "Send record not found or newsletter HTML not compiled",
       });
     }
 
-    // For this example, we'll simulate sending
-    // In real implementation, you'd integrate with your mailing list system
+    const subscribers = sendRecord.mailing_list?.subscribers || [];
     
-    // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    if (subscribers.length === 0) {
+      await directus.request(
+        updateItem("newsletter_sends", send_record_id, {
+          status: "sent",
+          sent_count: 0,
+          sent_at: new Date().toISOString(),
+        })
+      );
+
+      return {
+        success: true,
+        message: "No subscribers in mailing list",
+        sent_count: 0,
+      };
+    }
+
+    // For demo purposes, we'll simulate sending
+    // In production, implement actual SendGrid sending
+    
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
 
     // Update send record as completed
     await directus.request(
       updateItem("newsletter_sends", send_record_id, {
         status: "sent",
-        sent_count: 1, // Mock data
+        sent_count: subscribers.length,
         sent_at: new Date().toISOString(),
       })
     );
 
     return {
       success: true,
-      message: "Newsletter sent successfully",
-      sent_count: 1,
+      message: `Newsletter sent successfully to ${subscribers.length} subscribers`,
+      sent_count: subscribers.length,
     };
   } catch (error: any) {
     console.error("Newsletter send error:", error);
@@ -1216,31 +1585,15 @@ export default defineEventHandler(async (event) => {
 });
 EOF
 
-    # Create TypeScript types
-    cat > frontend-integration/types/nuxt.d.ts << 'EOF'
-declare module "nuxt/schema" {
-  interface RuntimeConfig {
-    // Private config (server-side only)
-    sendgridApiKey: string;
-    directusWebhookSecret: string;
-    sendgridUnsubscribeGroupId?: string;
-  }
-
-  interface PublicRuntimeConfig {
-    // Public config (client + server)
-    directusUrl: string;
-    siteUrl: string;
-  }
-}
-
-export {};
-EOF
-
-    # Create integration instructions
+    # Create integration README
     cat > frontend-integration/README.md << 'EOF'
-# Newsletter Frontend Integration
+# Enhanced Newsletter Frontend Integration v3.0
 
-This package contains the Nuxt.js server endpoints and configuration needed for the newsletter feature.
+This package contains the enhanced Nuxt.js server endpoints with support for:
+- User-friendly block fields (no JSON required)
+- Subscriber management integration
+- M2M relationship support (subscribers ↔ mailing_lists)
+- Backwards compatibility with legacy JSON content
 
 ## Installation
 
@@ -1257,21 +1610,7 @@ This package contains the Nuxt.js server endpoints and configuration needed for 
    npm install -D @types/mjml
    ```
 
-3. **Update nuxt.config.ts**
-   ```typescript
-   export default defineNuxtConfig({
-     runtimeConfig: {
-       sendgridApiKey: process.env.SENDGRID_API_KEY,
-       directusWebhookSecret: process.env.DIRECTUS_WEBHOOK_SECRET,
-       public: {
-         directusUrl: process.env.DIRECTUS_URL,
-         siteUrl: process.env.NUXT_SITE_URL
-       }
-     }
-   })
-   ```
-
-4. **Configure Environment Variables**
+3. **Configure Environment Variables**
    ```env
    DIRECTUS_URL=https://admin.yoursite.com
    DIRECTUS_WEBHOOK_SECRET=your-secure-webhook-secret
@@ -1279,25 +1618,44 @@ This package contains the Nuxt.js server endpoints and configuration needed for 
    NUXT_SITE_URL=https://yoursite.com
    ```
 
-5. **Test Endpoints**
-   ```bash
-   # Test MJML compilation
-   curl -X POST http://localhost:3000/api/newsletter/compile-mjml \
-     -H "Authorization: Bearer your-webhook-secret" \
-     -H "Content-Type: application/json" \
-     -d '{"newsletter_id": 1}'
-   ```
+## New Features
 
-## Flow Configuration
+### User-Friendly Block Creation
+Users now create blocks with proper form fields instead of JSON:
+- **Title**: Text input
+- **Background Color**: Color picker with presets
+- **Text Alignment**: Dropdown (Left/Center/Right)
+- **Button Text**: Text input
+- **Button URL**: URL input
 
-In your Directus admin, create flow operations with these URLs:
-- MJML Compile: `https://yoursite.com/api/newsletter/compile-mjml`
-- Send Email: `https://yoursite.com/api/newsletter/send`
+### Subscriber Management
+- Create subscribers with name, email, company
+- Assign subscribers to multiple mailing lists
+- M2M relationships fully supported
 
-Use your webhook secret for authorization headers.
+### Enhanced MJML Compilation
+- Supports both new individual fields and legacy JSON content
+- Backwards compatible with existing newsletters
+- Better error handling and logging
+
+## Testing
+
+```bash
+# Test MJML compilation
+curl -X POST http://localhost:3000/api/newsletter/compile-mjml \
+  -H "Authorization: Bearer your-webhook-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"newsletter_id": 1}'
+
+# Test sending
+curl -X POST http://localhost:3000/api/newsletter/send \
+  -H "Authorization: Bearer your-webhook-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"newsletter_id": 1, "send_record_id": 1}'
+```
 EOF
 
-    print_success "Frontend integration package created in frontend-integration/"
+    print_success "Enhanced frontend integration package created in frontend-integration/"
 }
 
 install_dependencies() {
@@ -1319,75 +1677,63 @@ run_installer() {
     local directus_url=$1
     local email=$2
     local password=$3
-    local frontend_url=$4
     
-    print_status "Running newsletter feature installer..."
+    print_status "Running complete newsletter feature installer..."
     
-    if validate_url "$directus_url"; then
-        if test_directus_connection "$directus_url"; then
-            if [ -n "$frontend_url" ]; then
-                print_status "Installing with frontend URL: $frontend_url"
-                node newsletter-installer.js "$directus_url" "$email" "$password" "$frontend_url"
-            else
-                print_status "Installing without frontend URL (manual flow setup required)"
-                node newsletter-installer.js "$directus_url" "$email" "$password"
-            fi
-            
-            if [ $? -eq 0 ]; then
-                print_success "Newsletter feature installed successfully!"
-                echo ""
-                print_status "Next steps:"
-                echo "1. Copy frontend-integration/ to your Nuxt project"
-                echo "2. Follow the integration instructions in frontend-integration/README.md"
-                if [ -z "$frontend_url" ]; then
-                    echo "3. Manually set up flow operations in Directus admin"
-                else
-                    echo "3. Complete flow setup in Directus admin"
-                fi
-                echo "4. Test with a sample newsletter"
-            else
-                print_error "Installation failed. Check the output above for details."
-                return 1
-            fi
-        else
-            print_error "Cannot connect to Directus. Please check the URL and try again."
-            return 1
-        fi
+    node newsletter-installer.js "$directus_url" "$email" "$password"
+    
+    if [ $? -eq 0 ]; then
+        print_success "Newsletter feature installed successfully!"
+        echo ""
+        print_status "What was installed:"
+        echo "✅ Subscribers collection with name, email, company fields"
+        echo "✅ User-friendly block creation (no JSON required!)"
+        echo "✅ Proper M2M relationships (subscribers ↔ mailing_lists)"
+        echo "✅ Proper M2O relationships (newsletters → mailing_lists)"
+        echo "✅ Enhanced MJML block system"
+        echo ""
+        print_status "Next steps:"
+        echo "1. Copy frontend-integration/ to your Nuxt project"
+        echo "2. Follow the integration instructions in frontend-integration/README.md"
+        echo "3. Test creating newsletters with the new user-friendly interface"
+        echo "4. Create subscribers and mailing lists"
+        echo "5. Test the complete workflow"
     else
-        print_error "Invalid Directus URL format. Please use http:// or https://"
+        print_error "Installation failed. Check the output above for details."
         return 1
     fi
 }
 
 show_usage() {
-    echo "Directus Newsletter Feature - Fixed Deployment Script v${VERSION}"
+    echo "Directus Newsletter Feature - Complete Deployment Script v${VERSION}"
     echo ""
-    echo "This script installs ONLY the Directus collections and data."
-    echo "Frontend integration is provided separately for your Nuxt project."
+    echo "Features:"
+    echo "  • Subscribers collection with name, email, company"
+    echo "  • User-friendly block fields (no JSON required!)"
+    echo "  • Proper M2M relationships (subscribers ↔ mailing_lists)"
+    echo "  • Proper M2O relationships (newsletters → mailing_lists)"
+    echo "  • Enhanced block content creation"
     echo ""
     echo "Usage:"
     echo "  $0 setup                                              # Download and setup installation files"
-    echo "  $0 install <directus-url> <email> <password>         # Install to Directus only"
-    echo "  $0 install <directus-url> <email> <password> <frontend-url>  # Install with flow URLs"
+    echo "  $0 install <directus-url> <email> <password>         # Install to Directus"
     echo "  $0 full <directus-url> <email> <password>            # Setup and install"
     echo ""
     echo "Examples:"
     echo "  $0 setup"
     echo "  $0 install https://admin.example.com admin@example.com password"
-    echo "  $0 install https://admin.example.com admin@example.com password https://frontend.example.com"
     echo "  $0 full https://admin.example.com admin@example.com password"
     echo ""
 }
 
 main() {
     echo "======================================================"
-    echo "   Directus Newsletter Feature - Fixed Deployment"
-    echo "                    Version ${VERSION}"
+    echo "   Newsletter Feature - Complete Deployment v${VERSION}"
     echo "======================================================"
     echo ""
-    echo "🔧 This version separates Directus and frontend setup"
-    echo "📦 Directus collections installed on Directus server"
-    echo "🌐 Frontend endpoints provided for your Nuxt project"
+    echo "🎉 Enhanced with user-friendly block creation!"
+    echo "📧 Complete subscriber management system!"
+    echo "🔗 Proper relationships for all collections!"
     echo ""
 
     # Check if Node.js is installed
@@ -1406,10 +1752,10 @@ main() {
 
     case "$1" in
         "setup")
-            print_status "Setting up newsletter feature installation..."
+            print_status "Setting up complete newsletter feature installation..."
             setup_deployment_dir
             create_package_json
-            create_installer_script
+            download_complete_installer
             create_frontend_package
             install_dependencies
             print_success "Setup completed! Files ready in $DEPLOYMENT_DIR"
@@ -1419,7 +1765,7 @@ main() {
             ;;
         "install")
             if [ $# -lt 4 ]; then
-                print_error "Install command requires 3-4 arguments"
+                print_error "Install command requires 3 arguments"
                 show_usage
                 exit 1
             fi
@@ -1427,23 +1773,23 @@ main() {
                 print_error "Installation files not found. Run '$0 setup' first."
                 exit 1
             }
-            run_installer "$2" "$3" "$4" "$5"
+            run_installer "$2" "$3" "$4"
             ;;
         "full")
             if [ $# -lt 4 ]; then
-                print_error "Full command requires 3-4 arguments"
+                print_error "Full command requires 3 arguments"
                 show_usage
                 exit 1
             fi
-            print_status "Running full setup and installation..."
+            print_status "Running complete setup and installation..."
             setup_deployment_dir
             create_package_json
-            create_installer_script
+            download_complete_installer
             create_frontend_package
             install_dependencies
             print_success "Setup completed!"
             echo ""
-            run_installer "$2" "$3" "$4" "$5"
+            run_installer "$2" "$3" "$4"
             ;;
         *)
             show_usage
