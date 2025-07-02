@@ -47,7 +47,7 @@ setup_deployment_dir() {
         if mkdir -p "$DEPLOYMENT_DIR"; then
             print_success "Created deployment directory: $DEPLOYMENT_DIR"
         else
-            print_error "Failed to create deployment directory: $DEPLOYment_DIR"
+            print_error "Failed to create deployment directory: $DEPLOYMENT_DIR"
             exit 1
         fi
     else
@@ -1538,7 +1538,7 @@ NUXT_SITE_URL=${this.options.frontendUrl}
 `;
 
     try {
-      # In a real implementation, you'd write this to a file
+      // In a real implementation, you'd write this to a file
       console.log('\n📋 Environment configuration:');
       console.log('Copy this to your .env file:');
       console.log('─'.repeat(60));
@@ -1604,7 +1604,7 @@ NUXT_SITE_URL=${this.options.frontendUrl}
   }
 }
 
-# CLI Interface
+// CLI Interface
 async function main() {
   const args = process.argv.slice(2);
   
@@ -1981,7 +1981,7 @@ EOF
 
 This package contains the enhanced Nuxt.js server endpoints with support for:
 - User-friendly block fields (no JSON required)
-- Subscriber management integration
+- Subscriber management integration  
 - M2M relationship support (subscribers ↔ mailing_lists)
 - Backwards compatibility with legacy JSON content
 - Automated Directus Flow integration
@@ -2003,332 +2003,128 @@ This package contains the enhanced Nuxt.js server endpoints with support for:
 
 3. **Configure Environment Variables**
    ```env
-   DIRECTUS_URL=[https://admin.yoursite.com](https://admin.yoursite.com)
+   DIRECTUS_URL=https://admin.yoursite.com
    DIRECTUS_WEBHOOK_SECRET=your-secure-webhook-secret
    SENDGRID_API_KEY=your-sendgrid-api-key
-   NUXT_SITE_URL=[https://yoursite.com](https://yoursite.com)
+   NUXT_SITE_URL=https://yoursite.com
    ```
 
 ## New Features
 
-### User-Friendly Block Creation
-Users now create blocks with proper form fields instead of JSON:
-- **Title**: Text input
-- **Background Color**: Color picker with presets
-- **Text Alignment**: Dropdown (Left/Center/Right)
-- **Button Text**: Text input
-- **Button URL**: URL input
-
-### Subscriber Management
-- Create subscribers with name, email, company
-- Assign subscribers to multiple mailing lists
-- M2M relationships fully supported
-
-### Enhanced MJML Compilation
-- Supports both new individual fields and legacy JSON content
-- Backwards compatible with existing newsletters
-- Better error handling and logging
-
 ### Newsletter Preview by Slug
-You can now create a public-facing page to preview newsletters using a URL slug.
+Create a public page to preview newsletters using URL slugs.
 
-**Steps to Implement in Nuxt 3:**
+**Setup:**
+1. Grant public read access to `newsletters` collection in Directus
+2. Create `pages/newsletter/[slug].vue` in your Nuxt project
+3. Use the provided Vue component code (see below)
 
-1.  **Ensure Public Read Access in Directus:**
-    * Go to your Directus Admin Panel -> Settings -> Roles & Permissions.
-    * Select the `Public` role.
-    * Find the `newsletters` collection and grant `Read` permission.
-    * For the `Read` permission, you might want to limit fields to `slug` and `compiled_html` for security/privacy.
+### Dynamic Field Visibility
+Block types now include `field_visibility_config` to show/hide fields dynamically in your frontend.
 
-2.  **Create a Nuxt Page for Preview:**
-    Create a file like `pages/newsletter/[slug].vue` in your Nuxt 3 project:
+**Implementation:**
+1. Fetch block types with `field_visibility_config`
+2. Use conditional rendering based on the config array
+3. Show only relevant fields for each block type
 
-    ```vue
-    <template>
-      <div v-if="newsletterHtml" v-html="newsletterHtml"></div>
-      <div v-else>
-        <p>Loading newsletter preview...</p>
-        <p v-if="error">{{ error.message }}</p>
-      </div>
-    </template>
-
-    <script setup lang="ts">
-    import { createDirectus, rest, readItems } from '@directus/sdk';
-    import { ref, onMounted } from 'vue';
-    import { useRoute } from 'vue-router';
-
-    const config = useRuntimeConfig();
-    const route = useRoute();
-    const newsletterHtml = ref<string | null>(null);
-    const error = ref<Error | null>(null);
-
-    onMounted(async () => {
-      const slug = route.params.slug;
-
-      if (!slug) {
-        error.value = new Error('Newsletter slug not provided in URL.');
-        return;
-      }
-
-      try {
-        const directus = createDirectus(config.public.directusUrl as string).with(rest());
-        
-        // Fetch newsletter by slug
-        const response = await directus.request(
-          readItems('newsletters', {
-            filter: {
-              slug: {
-                _eq: slug
-              },
-              status: { // Only show published/sent newsletters publicly
-                _in: ['published', 'sent'] 
-              }
-            },
-            fields: ['compiled_html']
-          })
-        );
-
-        if (response && response.length > 0) {
-          newsletterHtml.value = response[0].compiled_html;
-        } else {
-          error.value = new Error(`Newsletter with slug "${slug}" not found or not published.`);
-        }
-      } catch (err: any) {
-        console.error('Error fetching newsletter preview:', err);
-        error.value = new Error('Failed to load newsletter preview. Please try again later.');
-      }
-    });
-
-    // Optional: Set page title
-    useHead({
-      title: `Newsletter Preview - ${route.params.slug}`
-    });
-    </script>
-
-    <style>
-    /* Basic styling to make the HTML content readable */
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #f0f0f0;
-    }
-    div {
-      max-width: 600px; /* Standard email width */
-      margin: 20px auto;
-      background-color: #ffffff;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      padding: 0; /* MJML generated HTML often has its own padding */
-    }
-    /* Add any other global styles for your email preview here */
-    </style>
-    ```
-
-3.  **Generate Slugs for Newsletters:**
-    When you create or update a newsletter in Directus, ensure you populate the `slug` field. You can:
-    * **Manually:** Type a unique, URL-friendly slug (e.g., `my-first-newsletter`, `july-2025-update`).
-    * **Automatically (Recommended for production):** Implement a Directus Flow Hook that generates the slug from the `title` field whenever a newsletter is created or updated. You can use a "Run Script" operation with JavaScript to slugify the title.
-
-### Dynamic Field Visibility in Frontend UI
-
-To make the `newsletter_blocks` fields dynamic based on the selected `block_type`, you'll need to implement this logic in your frontend application (e.g., your Nuxt.js project).
-
-**How to Implement in Nuxt 3 (for a custom block editing component):**
-
-1.  **Fetch `block_types` with `field_visibility_config`:**
-    When your frontend loads a newsletter for editing, or when a user selects a `block_type` for a `newsletter_block`, you should fetch the `block_types` collection, ensuring you include the `field_visibility_config` field.
-
-    ```typescript
-    // Example of fetching block types in Nuxt 3
-    import { createDirectus, rest, readItems } from '@directus/sdk';
-
-    const config = useRuntimeConfig();
-    const directus = createDirectus(config.public.directusUrl as string).with(rest());
-
-    interface BlockType {
-      id: string;
-      name: string;
-      slug: string;
-      field_visibility_config: string[]; // Array of field names
-      // ... other fields
-    }
-
-    const blockTypes = ref<BlockType[]>([]);
-
-    async function fetchBlockTypes() {
-      try {
-        blockTypes.value = await directus.request(
-          readItems('block_types', {
-            fields: ['id', 'name', 'slug', 'field_visibility_config']
-          })
-        );
-      } catch (e) {
-        console.error('Error fetching block types:', e);
-      }
-    }
-
-    onMounted(fetchBlockTypes);
-    ```
-
-2.  **Implement Conditional Rendering in your Vue Component:**
-    In your Nuxt.js component where you edit `newsletter_blocks`, you'll need logic to:
-    * Get the currently selected `block_type` for the `newsletter_block` being edited.
-    * Find the corresponding `block_type` object from your `blockTypes` data.
-    * Use the `field_visibility_config` array from that `block_type` to conditionally render the input fields for the `newsletter_block`.
-
-    ```vue
-    <template>
-      <div>
-        <!-- Block Type Selector -->
-        <label for="blockType">Block Type:</label>
-        <select id="blockType" v-model="selectedBlockTypeId" @change="updateVisibleFields">
-          <option v-for="type in blockTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
-        </select>
-
-        <!-- Dynamically rendered fields -->
-        <div v-if="currentBlockTypeConfig">
-          <div v-if="currentBlockTypeConfig.includes('title')">
-            <label for="title">Title:</label>
-            <input type="text" id="title" v-model="blockData.title" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('subtitle')">
-            <label for="subtitle">Subtitle:</label>
-            <input type="text" id="subtitle" v-model="blockData.subtitle" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('text_content')">
-            <label for="textContent">Content:</label>
-            <textarea id="textContent" v-model="blockData.text_content"></textarea>
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('image_url')">
-            <label for="imageUrl">Image URL:</label>
-            <input type="text" id="imageUrl" v-model="blockData.image_url" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('image_alt_text')">
-            <label for="imageAltText">Image Alt Text:</label>
-            <input type="text" id="imageAltText" v-model="blockData.image_alt_text" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('image_caption')">
-            <label for="imageCaption">Image Caption:</label>
-            <input type="text" id="imageCaption" v-model="blockData.image_caption" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('button_text')">
-            <label for="buttonText">Button Text:</label>
-            <input type="text" id="buttonText" v-model="blockData.button_text" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('button_url')">
-            <label for="buttonUrl">Button URL:</label>
-            <input type="text" id="buttonUrl" v-model="blockData.button_url" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('background_color')">
-            <label for="backgroundColor">Background Color:</label>
-            <input type="color" id="backgroundColor" v-model="blockData.background_color" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('text_color')">
-            <label for="textColor">Text Color:</label>
-            <input type="color" id="textColor" v-model="blockData.text_color" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('text_align')">
-            <label for="textAlign">Text Align:</label>
-            <select id="textAlign" v-model="blockData.text_align">
-              <option value="left">Left</option>
-              <option value="center">Center</option>
-              <option value="right">Right</option>
-            </select>
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('padding')">
-            <label for="padding">Padding (e.g., 20px 0):</label>
-            <input type="text" id="padding" v-model="blockData.padding" />
-          </div>
-          <div v-if="currentBlockTypeConfig.includes('font_size')">
-            <label for="fontSize">Font Size:</label>
-            <select id="fontSize" v-model="blockData.font_size">
-              <option value="12px">Small (12px)</option>
-              <option value="14px">Normal (14px)</option>
-              <option value="16px">Large (16px)</option>
-              <option value="18px">Extra Large (18px)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    </template>
-
-    <script setup lang="ts">
-    import { ref, computed, watch, onMounted } from 'vue';
-    import { createDirectus, rest, readItems } from '@directus/sdk';
-
-    // Assume these are props passed to this component, representing the current newsletter block
-    const props = defineProps<{
-      initialBlockData: any; // The data for the current newsletter_block item
-      initialBlockTypeId: string; // The ID of the currently selected block_type
-    }>();
-
-    const emit = defineEmits(['update:blockData']);
-
-    const config = useRuntimeConfig();
-    const directus = createDirectus(config.public.directusUrl as string).with(rest());
-
-    interface BlockType {
-      id: string;
-      name: string;
-      slug: string;
-      field_visibility_config: string[];
-    }
-
-    const blockTypes = ref<BlockType[]>([]);
-    const selectedBlockTypeId = ref<string>(props.initialBlockTypeId);
-    const blockData = ref<any>({ ...props.initialBlockData });
-
-    // Computed property to get the config for the currently selected block type
-    const currentBlockTypeConfig = computed(() => {
-      const foundType = blockTypes.value.find(type => type.id === selectedBlockTypeId.value);
-      return foundType ? foundType.field_visibility_config : [];
-    });
-
-    // Fetch block types on component mount
-    onMounted(async () => {
-      try {
-        blockTypes.value = await directus.request(
-          readItems('block_types', {
-            fields: ['id', 'name', 'slug', 'field_visibility_config']
-          })
-        );
-      } catch (e) {
-        console.error('Error fetching block types:', e);
-      }
-    });
-
-    // Watch for changes in selectedBlockTypeId to update visible fields
-    function updateVisibleFields() {
-      // When block type changes, you might want to clear or reset some fields
-      // For simplicity here, we just re-render based on new config
-      // In a real app, you might want to intelligently preserve data for common fields
-      console.log('Selected block type changed. Visible fields will update.');
-    }
-
-    // Emit updated blockData to parent component
-    watch(blockData, (newValue) => {
-      emit('update:blockData', newValue);
-    }, { deep: true });
-    </script>
-
-    <style scoped>
-    /* Add styling for your form fields here */
-    div {
-      margin-bottom: 15px;
-    }
-    label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: bold;
-    }
-    input[type="text"], textarea, select {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    input[type="color"] {
-      height: 38px; /* Adjust as needed */
-    }
-    </style>
-    ```
+For complete implementation examples, see the full README in the deployment directory.
 EOF
+
+    print_success "Frontend integration package created"
+}
+
+# Additional utility functions would go here...
+
+install_newsletter() {
+    local directus_url=$1
+    local email=$2
+    local password=$3
+    local frontend_url=$4
+    local webhook_secret=$5
+    
+    print_status "Installing newsletter feature..."
+    
+    if command_exists node; then
+        # Install npm dependencies first
+        if [ -f "package.json" ]; then
+            print_status "Installing Node.js dependencies..."
+            npm install
+        fi
+        
+        # Run the installer
+        if [ -n "$frontend_url" ]; then
+            if [ -n "$webhook_secret" ]; then
+                node newsletter-installer.js "$directus_url" "$email" "$password" "$frontend_url" "$webhook_secret"
+            else
+                node newsletter-installer.js "$directus_url" "$email" "$password" "$frontend_url"
+            fi
+        else
+            node newsletter-installer.js "$directus_url" "$email" "$password"
+        fi
+    else
+        print_error "Node.js is required but not installed"
+        exit 1
+    fi
+}
+
+show_usage() {
+    echo "Directus Newsletter Feature - Deployment Script v$VERSION"
+    echo ""
+    echo "Usage:"
+    echo "  $0 setup                                                          # Setup deployment environment"
+    echo "  $0 install <directus-url> <email> <password> [frontend-url] [webhook-secret]    # Install to Directus"
+    echo "  $0 full <directus-url> <email> <password> [frontend-url] [webhook-secret]       # Complete setup and install"
+    echo ""
+    echo "Examples:"
+    echo "  $0 setup"
+    echo "  $0 install https://admin.example.com admin@example.com password"
+    echo "  $0 full https://admin.example.com admin@example.com password https://example.com"
+    echo ""
+    echo "Environment Variables:"
+    echo "  NEWSLETTER_DEPLOY_DIR    Deployment directory (default: /opt/newsletter-feature)"
+    echo ""
+}
+
+# Main execution
+main() {
+    case "${1:-}" in
+        "setup")
+            setup_deployment_dir
+            create_package_json
+            download_complete_installer
+            create_frontend_package
+            print_success "Newsletter feature setup completed!"
+            print_status "Files created in: $DEPLOYMENT_DIR"
+            print_status "Next step: run '$0 install <directus-url> <email> <password>'"
+            ;;
+        "install")
+            if [ $# -lt 4 ]; then
+                print_error "Install command requires: <directus-url> <email> <password>"
+                show_usage
+                exit 1
+            fi
+            setup_deployment_dir
+            install_newsletter "$2" "$3" "$4" "$5" "$6"
+            ;;
+        "full")
+            if [ $# -lt 4 ]; then
+                print_error "Full command requires: <directus-url> <email> <password>"
+                show_usage
+                exit 1
+            fi
+            setup_deployment_dir
+            create_package_json
+            download_complete_installer
+            create_frontend_package
+            install_newsletter "$2" "$3" "$4" "$5" "$6"
+            print_success "Complete newsletter feature installation finished!"
+            ;;
+        *)
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function
+main "$@"
