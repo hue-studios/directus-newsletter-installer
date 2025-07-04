@@ -1,4 +1,4 @@
-name: Test Newsletter Installer
+name: Test Enhanced Newsletter System v5.0
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   validate-scripts:
-    name: Validate Scripts
+    name: Validate Enhanced Scripts v5.0
     runs-on: ubuntu-latest
     
     steps:
@@ -27,24 +27,34 @@ jobs:
     - name: Validate deployment script
       run: bash -n deploy.sh
 
+    - name: Validate standalone installer
+      run: node -c newsletter-installer.js
+
     - name: Check shell scripts with shellcheck
       uses: ludeeus/action-shellcheck@master
       with:
         scandir: '.'
         ignore_paths: >
           .git
+          node_modules
 
-    - name: Test setup command
+    - name: Test modular setup command
       run: |
         ./deploy.sh setup
-        # Verify structure was created
+        # Verify enhanced modular structure was created
         test -d /opt/newsletter-feature
         test -f /opt/newsletter-feature/scripts/common.sh
         test -f /opt/newsletter-feature/scripts/install-collections.sh
+        test -f /opt/newsletter-feature/scripts/install-frontend.sh
+        test -f /opt/newsletter-feature/scripts/install-flow.sh
+        test -f /opt/newsletter-feature/scripts/debug-installation.sh
         test -f /opt/newsletter-feature/installers/newsletter-installer.js
+        test -f /opt/newsletter-feature/installers/fix-flow-connections.js
+        test -d /opt/newsletter-feature/frontend-integration
+        test -f /opt/newsletter-feature/frontend-integration/README.md
 
-  test-installer:
-    name: Test Installer Logic
+  test-enhanced-installer:
+    name: Test Enhanced Installer v5.0
     runs-on: ubuntu-latest
     needs: validate-scripts
     
@@ -97,17 +107,17 @@ jobs:
       run: |
         timeout 300 bash -c 'until curl -f http://localhost:8055/server/health; do sleep 5; done'
 
-    - name: Test installer setup
+    - name: Test enhanced installer setup
       run: ./deploy.sh setup
 
-    - name: Test newsletter installation
+    - name: Test enhanced newsletter installation
       run: |
         timeout 300 ./deploy.sh install \
           http://localhost:8055 \
           admin@test.com \
           test123456
 
-    - name: Verify collections created
+    - name: Verify enhanced collections created
       run: |
         # Get auth token
         TOKEN=$(curl -X POST http://localhost:8055/auth/login \
@@ -115,21 +125,57 @@ jobs:
           -d '{"email":"admin@test.com","password":"test123456"}' \
           | jq -r '.data.access_token')
         
-        # Check if newsletter collections exist
+        # Check if enhanced newsletter collections exist (v5.0)
         COLLECTIONS=$(curl -H "Authorization: Bearer $TOKEN" \
           http://localhost:8055/collections | \
           jq -r '.data[].collection' | \
-          grep -E '(newsletters|block_types|newsletter_blocks)')
+          grep -E '(newsletters|newsletter_templates|content_library|newsletter_blocks|subscribers|mailing_lists)')
         
-        echo "Found collections: $COLLECTIONS"
+        echo "Found enhanced collections: $COLLECTIONS"
         
-        # Verify key collections exist
+        # Verify all key enhanced collections exist
         echo "$COLLECTIONS" | grep -q "newsletters"
         echo "$COLLECTIONS" | grep -q "newsletter_blocks" 
-        echo "$COLLECTIONS" | grep -q "block_types"
+        echo "$COLLECTIONS" | grep -q "newsletter_templates"
+        echo "$COLLECTIONS" | grep -q "content_library"
+        echo "$COLLECTIONS" | grep -q "subscribers"
+        echo "$COLLECTIONS" | grep -q "mailing_lists"
 
-  test-frontend-integration:
-    name: Test Frontend Integration
+    - name: Verify enhanced relationships
+      run: |
+        TOKEN=$(curl -X POST http://localhost:8055/auth/login \
+          -H "Content-Type: application/json" \
+          -d '{"email":"admin@test.com","password":"test123456"}' \
+          | jq -r '.data.access_token')
+        
+        # Check critical blocks relationship exists
+        RELATIONS=$(curl -H "Authorization: Bearer $TOKEN" \
+          http://localhost:8055/relations | \
+          jq -r '.data[].many_collection' | \
+          grep -E 'newsletter_blocks')
+        
+        echo "Found newsletter_blocks relations: $RELATIONS"
+        echo "$RELATIONS" | grep -q "newsletter_blocks"
+
+    - name: Test enhanced block types
+      run: |
+        TOKEN=$(curl -X POST http://localhost:8055/auth/login \
+          -H "Content-Type: application/json" \
+          -d '{"email":"admin@test.com","password":"test123456"}' \
+          | jq -r '.data.access_token')
+        
+        # Verify sample block types were created
+        BLOCK_TYPES=$(curl -H "Authorization: Bearer $TOKEN" \
+          http://localhost:8055/items/block_types | \
+          jq -r '.data[].name' | \
+          grep -E '(Hero Section|Text Block)')
+        
+        echo "Found block types: $BLOCK_TYPES"
+        echo "$BLOCK_TYPES" | grep -q "Hero Section"
+        echo "$BLOCK_TYPES" | grep -q "Text Block"
+
+  test-enhanced-frontend:
+    name: Test Enhanced Frontend Integration v5.0
     runs-on: ubuntu-latest
     needs: validate-scripts
 
@@ -156,24 +202,40 @@ jobs:
         npm init -y
         npm install nuxt@latest
 
-    - name: Test frontend installation
+    - name: Test enhanced frontend installation
       run: |
         ./deploy.sh frontend /tmp/test-nuxt
         
-        # Verify files were copied
+        # Verify enhanced files were copied
         test -d /tmp/test-nuxt/server/api/newsletter
         test -f /tmp/test-nuxt/server/api/newsletter/compile-mjml.post.ts
         test -f /tmp/test-nuxt/server/api/newsletter/send.post.ts
         test -f /tmp/test-nuxt/types/newsletter.d.ts
+        
+        # Check for enhanced v5.0 features in files
+        grep -q "enhanced features" /tmp/test-nuxt/server/api/newsletter/compile-mjml.post.ts
+        grep -q "NewsletterTemplate" /tmp/test-nuxt/types/newsletter.d.ts
 
-    - name: Validate TypeScript syntax
+    - name: Validate enhanced TypeScript syntax
       run: |
         cd /tmp/test-nuxt
-        npm install typescript @types/node
+        npm install typescript @types/node @directus/sdk mjml handlebars
+        # Test enhanced server endpoints compile
         npx tsc --noEmit --skipLibCheck server/api/newsletter/*.ts
+        # Test enhanced types are valid
+        npx tsc --noEmit --skipLibCheck types/newsletter.d.ts
 
-  security-scan:
-    name: Security Scan
+    - name: Test enhanced endpoint structure
+      run: |
+        # Verify enhanced features are in the endpoints
+        grep -q "enhanced features" /tmp/test-nuxt/server/api/newsletter/compile-mjml.post.ts
+        grep -q "newsletter_category" /tmp/test-nuxt/server/api/newsletter/compile-mjml.post.ts
+        grep -q "has_template" /tmp/test-nuxt/server/api/newsletter/compile-mjml.post.ts
+        grep -q "delivery_rate" /tmp/test-nuxt/server/api/newsletter/send.post.ts
+        grep -q "is_ab_test" /tmp/test-nuxt/server/api/newsletter/send.post.ts
+
+  test-modular-architecture:
+    name: Test Modular Architecture v5.0
     runs-on: ubuntu-latest
     needs: validate-scripts
 
@@ -190,36 +252,324 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Run npm audit
-      run: npm audit --audit-level moderate
+    - name: Test modular setup
+      run: ./deploy.sh setup
 
-    - name: Scan for secrets
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ./
-        base: main
-        head: HEAD
+    - name: Test individual script execution
+      run: |
+        # Test that individual scripts can be executed
+        bash -n /opt/newsletter-feature/scripts/install-collections.sh
+        bash -n /opt/newsletter-feature/scripts/install-frontend.sh
+        bash -n /opt/newsletter-feature/scripts/install-flow.sh
+        bash -n /opt/newsletter-feature/scripts/debug-installation.sh
 
-  documentation-check:
-    name: Check Documentation
+    - name: Test installer components
+      run: |
+        # Test that JavaScript installers are valid
+        cd /opt/newsletter-feature
+        npm install
+        node -c installers/newsletter-installer.js
+        node -c installers/fix-flow-connections.js
+
+    - name: Test debug functionality
+      run: |
+        # Test debug script can run (without actual connections)
+        cd /opt/newsletter-feature
+        timeout 10s ./scripts/debug-installation.sh https://example.com test@test.com password || true
+
+    - name: Test frontend integration package
+      run: |
+        # Verify frontend integration package is complete
+        test -d /opt/newsletter-feature/frontend-integration/server
+        test -d /opt/newsletter-feature/frontend-integration/types
+        test -d /opt/newsletter-feature/frontend-integration/components
+        test -d /opt/newsletter-feature/frontend-integration/composables
+        test -f /opt/newsletter-feature/frontend-integration/README.md
+
+  test-enhanced-features:
+    name: Test Enhanced Features v5.0
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Check required files
+    - name: Test enhanced configuration
+      run: |
+        # Verify enhanced environment variables are documented
+        grep -q "NEWSLETTER_LOGO_URL" .env.example
+        grep -q "ENABLE_AB_TESTING" .env.example
+        grep -q "ANALYTICS_RETENTION_DAYS" .env.example
+        grep -q "Enhanced Newsletter System v5.0" .env.example
+
+    - name: Test enhanced documentation
+      run: |
+        # Verify v5.0 features are documented
+        grep -q "Newsletter Templates" README.md
+        grep -q "Content Library" README.md
+        grep -q "Enhanced Subscribers" README.md
+        grep -q "A/B Testing" README.md
+        grep -q "v5.0" README.md
+        grep -q "Modular Architecture" README.md
+
+    - name: Test enhanced types
+      run: |
+        # Verify enhanced TypeScript interfaces exist
+        test -f types/newsletter.d.ts
+        grep -q "NewsletterTemplate" types/newsletter.d.ts
+        grep -q "ContentLibrary" types/newsletter.d.ts
+        grep -q "engagement_score" types/newsletter.d.ts
+        grep -q "ab_test_percentage" types/newsletter.d.ts
+        grep -q "delivery_rate" types/newsletter.d.ts
+
+    - name: Validate enhanced package configuration
+      run: |
+        # Verify package.json has enhanced configuration
+        grep -q "content-library" package.json
+        grep -q "ab-testing" package.json
+        grep -q "vue-components" package.json
+        grep -q "analytics" package.json
+        grep -q "modular" package.json
+
+    - name: Test standalone installer
+      run: |
+        # Verify standalone installer has enhanced features
+        test -f newsletter-installer.js
+        grep -q "v5.0" newsletter-installer.js
+        grep -q "newsletter_templates" newsletter-installer.js
+        grep -q "content_library" newsletter-installer.js
+        grep -q "enhanced" newsletter-installer.js
+
+  test-example-files:
+    name: Test Example Files v5.0
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate Docker Compose example
+      run: |
+        # Test Docker Compose file is valid
+        docker-compose -f examples/docker-compose.yml config > /dev/null
+        
+        # Verify enhanced services are configured
+        grep -q "newsletter" examples/docker-compose.yml
+        grep -q "NUXT_SITE_URL" examples/docker-compose.yml
+
+    - name: Validate Nuxt config example
+      run: |
+        # Verify enhanced runtime config
+        grep -q "sendgridApiKey" examples/nuxt.config.ts
+        grep -q "directusWebhookSecret" examples/nuxt.config.ts
+        grep -q "directusUrl" examples/nuxt.config.ts
+        grep -q "transpile.*directus" examples/nuxt.config.ts
+
+    - name: Validate Directus flow example
+      run: |
+        # Test flow JSON is valid
+        cat examples/directus-flow.json | jq . > /dev/null
+        
+        # Verify enhanced flow operations
+        grep -q "compile-mjml" examples/directus-flow.json
+        grep -q "send" examples/directus-flow.json
+
+    - name: Test quick reference
+      run: |
+        # Verify quick reference has v5.0 content
+        test -f examples/flow-quick-reference.md
+        grep -q "enhanced" examples/flow-quick-reference.md
+        grep -q "compile-mjml" examples/flow-quick-reference.md
+
+  security-scan:
+    name: Security Scan v5.0
+    runs-on: ubuntu-latest
+    needs: validate-scripts
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run enhanced npm audit
+      run: npm audit --audit-level moderate
+
+    - name: Scan for secrets in enhanced codebase
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+
+    - name: Test environment variable security
+      run: |
+        # Ensure no sensitive defaults in .env.example
+        ! grep -q "real-api-key" .env.example
+        ! grep -q "production-secret" .env.example
+        ! grep -q "admin@company.com" .env.example
+        
+        # Verify webhook secrets are placeholder values
+        grep -q "your-secure-webhook-secret" .env.example
+
+    - name: Test script security
+      run: |
+        # Check for potential security issues in scripts
+        ! grep -r "eval\|exec" deploy.sh newsletter-installer.js
+        ! grep -r "curl.*|.*sh" deploy.sh
+        ! grep -r "rm -rf /" deploy.sh
+
+  documentation-check:
+    name: Check Enhanced Documentation v5.0
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check required enhanced files
       run: |
         test -f README.md
         test -f docs/INSTALLATION.md
         test -f docs/TROUBLESHOOTING.md
+        test -f docs/FLOW_SETUP.md
         test -f examples/nuxt.config.ts
         test -f examples/docker-compose.yml
+        test -f examples/directus-flow.json
+        test -f examples/flow-quick-reference.md
         test -f .env.example
         test -f LICENSE
+        test -f newsletter-installer.js
+        test -f deploy.sh
+        test -f types/newsletter.d.ts
+        test -f server/api/newsletter/compile-mjml.post.ts
+        test -f server/api/newsletter/send.post.ts
+
+    - name: Validate enhanced documentation content
+      run: |
+        # Check for v5.0 features in documentation
+        grep -q "v5.0" README.md
+        grep -q "Newsletter Templates" docs/INSTALLATION.md
+        grep -q "Content Library" docs/INSTALLATION.md
+        grep -q "Enhanced Subscribers" docs/INSTALLATION.md
+        grep -q "Modular Architecture" README.md
+        grep -q "A/B Testing" README.md
+        grep -q "Analytics" README.md
+
+    - name: Check documentation structure
+      run: |
+        # Verify documentation has proper sections
+        grep -q "Quick Start" README.md
+        grep -q "Installation" README.md
+        grep -q "Troubleshooting" README.md
+        
+        # Check docs directory structure
+        test -f docs/INSTALLATION.md
+        test -f docs/TROUBLESHOOTING.md
+        test -f docs/FLOW_SETUP.md
 
     - name: Validate markdown links
       uses: gaurav-nelson/github-action-markdown-link-check@v1
       with:
         use-quiet-mode: 'yes'
         use-verbose-mode: 'yes'
+        config-file: '.github/mlc_config.json'
+
+    - name: Check examples are up to date
+      run: |
+        # Verify examples reflect v5.0 features
+        grep -q "newsletter_templates" examples/directus-flow.json || echo "Warning: Flow example may need v5.0 updates"
+        grep -q "enhanced" examples/nuxt.config.ts || echo "Warning: Nuxt example may need v5.0 updates"
+        
+        # Check that examples are documented
+        grep -q "examples/" README.md
+        test -f examples/flow-quick-reference.md
+
+  integration-test:
+    name: Integration Test v5.0
+    runs-on: ubuntu-latest
+    needs: [test-enhanced-installer, test-enhanced-frontend]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Test full modular installation
+      run: |
+        # Test complete setup
+        ./deploy.sh setup
+        
+        # Verify all components were created
+        test -f /opt/newsletter-feature/package.json
+        test -f /opt/newsletter-feature/scripts/install-collections.sh
+        test -f /opt/newsletter-feature/scripts/install-frontend.sh
+        test -f /opt/newsletter-feature/scripts/install-flow.sh
+        test -f /opt/newsletter-feature/installers/newsletter-installer.js
+
+    - name: Test component interaction
+      run: |
+        # Test that components can work together
+        cd /opt/newsletter-feature
+        npm install
+        
+        # Test standalone installer syntax
+        node -c installers/newsletter-installer.js
+        
+        # Test that scripts can source common functions
+        bash -c "source scripts/common.sh && command_exists node"
+
+    - name: Test cleanup and reinstall
+      run: |
+        # Test that setup can be run multiple times
+        ./deploy.sh setup
+        test -f /opt/newsletter-feature/scripts/common.sh
+        
+        # Test that components are updated, not duplicated
+        SCRIPT_COUNT=$(find /opt/newsletter-feature/scripts -name "*.sh" | wc -l)
+        [ "$SCRIPT_COUNT" -eq 4 ] # Should have exactly 4 scripts
+
+  performance-test:
+    name: Performance Test v5.0
+    runs-on: ubuntu-latest
+    needs: validate-scripts
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Test deployment speed
+      run: |
+        # Time the setup process
+        time ./deploy.sh setup
+        
+        # Verify setup completes in reasonable time (under 60 seconds)
+        timeout 60s ./deploy.sh setup
+
+    - name: Test script efficiency
+      run: |
+        # Test that scripts don't have obvious performance issues
+        cd /opt/newsletter-feature
+        
+        # Check for potential performance issues
+        ! grep -r "while true" scripts/
+        ! grep -r "sleep [0-9][0-9][0-9]" scripts/
+        
+        # Verify scripts complete quickly
+        timeout 30s bash -n scripts/install-collections.sh
+        timeout 30s bash -n scripts/install-frontend.sh

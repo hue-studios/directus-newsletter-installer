@@ -1,0 +1,33 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^https://admin\\.example\\.com"
+    },
+    {
+      "pattern": "^https://your-.*\\.com"
+    },
+    {
+      "pattern": "^https://yoursite\\.com"
+    },
+    {
+      "pattern": "^http://localhost"
+    },
+    {
+      "pattern": "^mailto:"
+    }
+  ],
+  "httpHeaders": [
+    {
+      "urls": ["https://github.com"],
+      "headers": {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (compatible; Newsletter-Installer-Link-Checker)"
+      }
+    }
+  ],
+  "timeout": "10s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "30s",
+  "aliveStatusCodes": [200, 201, 202, 204, 206, 300, 301, 302, 304, 307, 308, 403, 405, 999]
+}

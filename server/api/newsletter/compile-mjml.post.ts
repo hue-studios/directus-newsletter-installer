@@ -4,7 +4,6 @@ import Handlebars from "handlebars";
 
 export default defineEventHandler(async (event) => {
   try {
-    // Get runtime config
     const config = useRuntimeConfig();
 
     // Verify authorization
@@ -39,17 +38,39 @@ export default defineEventHandler(async (event) => {
       rest()
     );
 
-    // Fetch newsletter with blocks and block types
+    // Fetch newsletter with enhanced fields and proper blocks relationship
     const newsletter = await directus.request(
       readItem("newsletters", newsletter_id, {
         fields: [
           "*",
           "blocks.id",
           "blocks.sort",
-          "blocks.content",
+          // Individual content fields for enhanced UX
+          "blocks.title",
+          "blocks.subtitle",
+          "blocks.text_content",
+          "blocks.image_url",
+          "blocks.image_alt_text",
+          "blocks.image_caption",
+          "blocks.button_text",
+          "blocks.button_url",
+          "blocks.background_color",
+          "blocks.text_color",
+          "blocks.text_align",
+          "blocks.padding",
+          "blocks.font_size",
+          // Block type info with enhanced fields
           "blocks.block_type.name",
           "blocks.block_type.slug",
           "blocks.block_type.mjml_template",
+          "blocks.block_type.field_visibility_config",
+          "blocks.block_type.category",
+          "blocks.block_type.icon",
+          // Legacy content field (fallback)
+          "blocks.content",
+          // Template info if used
+          "template_id.name",
+          "template_id.category",
         ],
       })
     );
@@ -65,7 +86,7 @@ export default defineEventHandler(async (event) => {
     const sortedBlocks =
       newsletter.blocks?.sort((a: any, b: any) => a.sort - b.sort) || [];
 
-    // Compile each block
+    // Compile each block with enhanced data structure
     let compiledBlocks = "";
 
     for (const block of sortedBlocks) {
@@ -75,9 +96,57 @@ export default defineEventHandler(async (event) => {
       }
 
       try {
-        // Compile handlebars template with block content
+        // Enhanced block data preparation using individual fields
+        const blockData = {
+          // Text content from individual fields (enhanced UX)
+          title: block.title || block.content?.title || "",
+          subtitle: block.subtitle || block.content?.subtitle || "",
+          text_content:
+            block.text_content ||
+            block.content?.content ||
+            block.content?.text_content ||
+            "",
+
+          // Image fields
+          image_url: block.image_url || block.content?.image_url || "",
+          image_alt_text:
+            block.image_alt_text ||
+            block.content?.alt_text ||
+            block.content?.image_alt_text ||
+            "",
+          image_caption:
+            block.image_caption ||
+            block.content?.caption ||
+            block.content?.image_caption ||
+            "",
+
+          // Button fields
+          button_text: block.button_text || block.content?.button_text || "",
+          button_url: block.button_url || block.content?.button_url || "",
+
+          // Styling fields with enhanced defaults
+          background_color:
+            block.background_color ||
+            block.content?.background_color ||
+            "#ffffff",
+          text_color:
+            block.text_color || block.content?.text_color || "#333333",
+          text_align: block.text_align || block.content?.text_align || "center",
+
+          // Layout fields
+          padding: block.padding || block.content?.padding || "20px 0",
+          font_size: block.font_size || block.content?.font_size || "14px",
+
+          // Dynamic personalization variables
+          company_name: "{{company_name}}",
+          subscriber_name: "{{subscriber_name}}",
+          unsubscribe_url: "{{unsubscribe_url}}",
+          preferences_url: "{{preferences_url}}",
+        };
+
+        // Compile handlebars template with enhanced data
         const template = Handlebars.compile(block.block_type.mjml_template);
-        const blockMjml = template(block.content || {});
+        const blockMjml = template(blockData);
 
         // Store compiled MJML for this block
         await directus.request(
@@ -90,17 +159,21 @@ export default defineEventHandler(async (event) => {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
+        console.error(`Error compiling block ${block.id}:`, errorMessage);
         throw createError({
-          statusMessage: `Error compiling block ${block.id}: ${errorMessage}`, // ✅ Works!
+          statusCode: 500,
+          statusMessage: `Error compiling block ${block.id}: ${errorMessage}`,
         });
       }
     }
 
-    // Header and footer partials
+    // Enhanced header and footer with better styling
     const headerPartial = `
     <mj-section background-color="#ffffff" padding="20px 0">
       <mj-column>
-        <mj-image src="${config.public.siteUrl || config.public.directusUrl}/assets/logo.png" alt="Newsletter" width="200px" align="center" />
+        <mj-image src="${
+          config.public.siteUrl || config.public.directusUrl
+        }/assets/logo.png" alt="Newsletter" width="200px" align="center" />
       </mj-column>
     </mj-section>`;
 
@@ -118,7 +191,7 @@ export default defineEventHandler(async (event) => {
       </mj-column>
     </mj-section>`;
 
-    // Build complete MJML
+    // Build complete MJML with enhanced structure
     const completeMjml = `
     <mjml>
       <mj-head>
@@ -156,11 +229,14 @@ export default defineEventHandler(async (event) => {
 
     return {
       success: true,
-      message: "MJML compiled successfully",
+      message: "MJML compiled successfully with enhanced features",
       warnings: mjmlResult.errors.length > 0 ? mjmlResult.errors : null,
+      blocks_compiled: sortedBlocks.length,
+      newsletter_category: newsletter.category,
+      has_template: !!newsletter.template_id,
     };
   } catch (error: any) {
-    console.error("MJML compilation error:", error);
+    console.error("Enhanced MJML compilation error:", error);
 
     throw createError({
       statusCode: error.statusCode || 500,

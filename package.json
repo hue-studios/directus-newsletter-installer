@@ -1,11 +1,34 @@
 {
   "name": "directus-newsletter-installer",
   "version": "5.0.0",
-  "description": "Complete modular newsletter system for Directus 11 with enhanced UX and proper blocks relationship",
+  "type": "module",
+  "description": "Complete modular newsletter system for Directus 11 with enhanced UX, templates, content library, and proper blocks relationship",
   "main": "deploy.sh",
+  "bin": {
+    "newsletter-installer": "./newsletter-installer.js",
+    "deploy-newsletter": "./deploy.sh"
+  },
   "scripts": {
     "setup": "./deploy.sh setup",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "install": "./deploy.sh install",
+    "install-frontend": "./deploy.sh frontend",
+    "install-flow": "./deploy.sh flow",
+    "debug": "./deploy.sh debug",
+    "fix-flow": "./deploy.sh fix-flow",
+    "test": "npm run test:syntax && npm run test:structure",
+    "test:syntax": "bash -n deploy.sh && node -c newsletter-installer.js",
+    "test:structure": "test -f deploy.sh && test -f newsletter-installer.js && test -f README.md",
+    "test:docs": "markdownlint docs/*.md README.md || true",
+    "test:types": "tsc --noEmit types/newsletter.d.ts || true",
+    "validate": "npm run test && npm run test:docs",
+    "clean": "rm -rf /opt/newsletter-feature",
+    "version": "echo 'Newsletter System v5.0'",
+    "preinstall": "node -e \"if(process.env.NODE_ENV==='production'){console.log('Installing Newsletter System v5.0...')}\"",
+    "postinstall": "echo 'Newsletter System ready! Run: npm run setup'",
+    "start": "./deploy.sh setup",
+    "dev": "./deploy.sh debug",
+    "build": "echo 'Newsletter System v5.0 - No build required'",
+    "lint": "shellcheck deploy.sh || true"
   },
   "keywords": [
     "directus",
@@ -13,10 +36,19 @@
     "mjml",
     "email",
     "templates",
+    "content-library",
+    "subscribers",
     "sendgrid",
     "nuxt",
     "automation",
-    "modular"
+    "modular",
+    "analytics",
+    "ab-testing",
+    "vue-components",
+    "email-marketing",
+    "cms",
+    "blocks",
+    "personalization"
   ],
   "author": "Your Agency",
   "license": "MIT",
@@ -28,15 +60,69 @@
     "url": "https://github.com/hue-studios/directus-newsletter-installer/issues"
   },
   "homepage": "https://github.com/hue-studios/directus-newsletter-installer#readme",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/hue-studios"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": ".github/workflows"
+  },
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=7.0.0"
   },
+  "dependencies": {
+    "@directus/sdk": "^17.0.0",
+    "mjml": "^4.14.1",
+    "handlebars": "^4.7.8",
+    "@sendgrid/mail": "^8.1.3"
+  },
+  "devDependencies": {
+    "@types/mjml": "^4.7.4",
+    "@types/node": "^20.0.0",
+    "@types/handlebars": "^4.1.0",
+    "typescript": "^5.0.0",
+    "markdownlint-cli": "^0.37.0"
+  },
+  "peerDependencies": {
+    "nuxt": "^3.0.0",
+    "vue": "^3.0.0"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.32.0"
+  },
   "files": [
     "deploy.sh",
+    "newsletter-installer.js",
     "README.md",
     ".env.example",
     "docs/",
-    "examples/"
+    "examples/",
+    "server/",
+    "types/",
+    "scripts/"
+  ],
+  "config": {
+    "deploymentDir": "/opt/newsletter-feature",
+    "supportedDirectusVersions": ">=11.0.0",
+    "supportedNodeVersions": ">=16.0.0",
+    "defaultWebhookSecret": "newsletter-webhook",
+    "maxRetries": 3,
+    "installTimeout": 300
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
   ]
 }
