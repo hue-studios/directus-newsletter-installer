@@ -1,0 +1,225 @@
+name: Test Newsletter Installer
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-scripts:
+    name: Validate Scripts
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Validate deployment script
+      run: bash -n deploy.sh
+
+    - name: Check shell scripts with shellcheck
+      uses: ludeeus/action-shellcheck@master
+      with:
+        scandir: '.'
+        ignore_paths: >
+          .git
+
+    - name: Test setup command
+      run: |
+        ./deploy.sh setup
+        # Verify structure was created
+        test -d /opt/newsletter-feature
+        test -f /opt/newsletter-feature/scripts/common.sh
+        test -f /opt/newsletter-feature/scripts/install-collections.sh
+        test -f /opt/newsletter-feature/installers/newsletter-installer.js
+
+  test-installer:
+    name: Test Installer Logic
+    runs-on: ubuntu-latest
+    needs: validate-scripts
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: directus
+          POSTGRES_USER: directus
+          POSTGRES_DB: directus
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      directus:
+        image: directus/directus:11-latest
+        env:
+          KEY: test-key-12345
+          SECRET: test-secret-12345
+          DB_CLIENT: pg
+          DB_HOST: postgres
+          DB_PORT: 5432
+          DB_DATABASE: directus
+          DB_USER: directus
+          DB_PASSWORD: directus
+          ADMIN_EMAIL: admin@test.com
+          ADMIN_PASSWORD: test123456
+        options: >-
+          --health-cmd "curl -f http://localhost:8055/server/health"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Wait for Directus
+      run: |
+        timeout 300 bash -c 'until curl -f http://localhost:8055/server/health; do sleep 5; done'
+
+    - name: Test installer setup
+      run: ./deploy.sh setup
+
+    - name: Test newsletter installation
+      run: |
+        timeout 300 ./deploy.sh install \
+          http://localhost:8055 \
+          admin@test.com \
+          test123456
+
+    - name: Verify collections created
+      run: |
+        # Get auth token
+        TOKEN=$(curl -X POST http://localhost:8055/auth/login \
+          -H "Content-Type: application/json" \
+          -d '{"email":"admin@test.com","password":"test123456"}' \
+          | jq -r '.data.access_token')
+        
+        # Check if newsletter collections exist
+        COLLECTIONS=$(curl -H "Authorization: Bearer $TOKEN" \
+          http://localhost:8055/collections | \
+          jq -r '.data[].collection' | \
+          grep -E '(newsletters|block_types|newsletter_blocks)')
+        
+        echo "Found collections: $COLLECTIONS"
+        
+        # Verify key collections exist
+        echo "$COLLECTIONS" | grep -q "newsletters"
+        echo "$COLLECTIONS" | grep -q "newsletter_blocks" 
+        echo "$COLLECTIONS" | grep -q "block_types"
+
+  test-frontend-integration:
+    name: Test Frontend Integration
+    runs-on: ubuntu-latest
+    needs: validate-scripts
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Test setup
+      run: ./deploy.sh setup
+
+    - name: Create test Nuxt project
+      run: |
+        mkdir -p /tmp/test-nuxt
+        cd /tmp/test-nuxt
+        npm init -y
+        npm install nuxt@latest
+
+    - name: Test frontend installation
+      run: |
+        ./deploy.sh frontend /tmp/test-nuxt
+        
+        # Verify files were copied
+        test -d /tmp/test-nuxt/server/api/newsletter
+        test -f /tmp/test-nuxt/server/api/newsletter/compile-mjml.post.ts
+        test -f /tmp/test-nuxt/server/api/newsletter/send.post.ts
+        test -f /tmp/test-nuxt/types/newsletter.d.ts
+
+    - name: Validate TypeScript syntax
+      run: |
+        cd /tmp/test-nuxt
+        npm install typescript @types/node
+        npx tsc --noEmit --skipLibCheck server/api/newsletter/*.ts
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: validate-scripts
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run npm audit
+      run: npm audit --audit-level moderate
+
+    - name: Scan for secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+
+  documentation-check:
+    name: Check Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check required files
+      run: |
+        test -f README.md
+        test -f docs/INSTALLATION.md
+        test -f docs/TROUBLESHOOTING.md
+        test -f examples/nuxt.config.ts
+        test -f examples/docker-compose.yml
+        test -f .env.example
+        test -f LICENSE
+
+    - name: Validate markdown links
+      uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        use-quiet-mode: 'yes'
+        use-verbose-mode: 'yes'

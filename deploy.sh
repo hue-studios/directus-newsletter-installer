@@ -65,6 +65,8 @@ setup_environment() {
     # Create all components
     create_package_json
     create_common_functions
+    create_install_collections_script    # ADD THIS LINE
+    create_install_frontend_script       # ADD THIS LINE
     create_complete_installer
     create_frontend_integration
     create_flow_installer
@@ -200,6 +202,122 @@ test_directus_connection() {
 EOF
 
     print_success "✅ Common functions created"
+}
+
+# Add these two functions to your deploy.sh script (after create_common_functions)
+
+create_install_collections_script() {
+    print_status "📝 Creating collections installer script..."
+    
+    cat > scripts/install-collections.sh << 'EOF'
+#!/bin/bash
+# scripts/install-collections.sh - Install Newsletter Collections
+
+set -e
+source "$(dirname "$0")/common.sh"
+
+DIRECTUS_URL="$1"
+EMAIL="$2" 
+PASSWORD="$3"
+FRONTEND_URL="$4"
+WEBHOOK_SECRET="${5:-newsletter-webhook-$(date +%s)}"
+
+if [ -z "$DIRECTUS_URL" ] || [ -z "$EMAIL" ] || [ -z "$PASSWORD" ]; then
+    print_error "Usage: $0 <directus-url> <email> <password> [frontend-url] [webhook-secret]"
+    exit 1
+fi
+
+# Validate inputs
+validate_url "$DIRECTUS_URL" || exit 1
+validate_email "$EMAIL" || exit 1
+test_directus_connection "$DIRECTUS_URL" || exit 1
+
+print_status "📦 Installing enhanced newsletter collections..."
+print_status "   Directus: $DIRECTUS_URL"
+print_status "   Frontend: ${FRONTEND_URL:-'Not provided'}"
+
+# Check dependencies
+check_node || exit 1
+install_dependencies
+
+# Run the enhanced newsletter installer
+cd ..
+node installers/newsletter-installer.js "$DIRECTUS_URL" "$EMAIL" "$PASSWORD" "$FRONTEND_URL" "$WEBHOOK_SECRET"
+
+print_success "✅ Enhanced collections installation completed"
+EOF
+
+    chmod +x scripts/install-collections.sh
+    print_success "✅ Collections installer script created"
+}
+
+create_install_frontend_script() {
+    print_status "📝 Creating frontend installer script..."
+    
+    cat > scripts/install-frontend.sh << 'EOF'
+#!/bin/bash
+# scripts/install-frontend.sh - Install Frontend Integration
+
+set -e
+source "$(dirname "$0")/common.sh"
+
+NUXT_PROJECT_PATH="$1"
+
+print_status "🎨 Installing frontend integration..."
+
+if [ -z "$NUXT_PROJECT_PATH" ]; then
+    print_warning "No Nuxt project path provided"
+    print_status "Frontend integration package is available in:"
+    print_status "   $(pwd)/../frontend-integration/"
+    print_status ""
+    print_status "To install manually:"
+    print_status "   cp -r $(pwd)/../frontend-integration/* /path/to/your/nuxt/project/"
+    exit 0
+fi
+
+if [ ! -d "$NUXT_PROJECT_PATH" ]; then
+    print_error "Nuxt project path not found: $NUXT_PROJECT_PATH"
+    exit 1
+fi
+
+print_status "Installing to: $NUXT_PROJECT_PATH"
+
+# Copy frontend integration files
+print_status "📁 Copying server endpoints..."
+cp -r ../frontend-integration/server/ "$NUXT_PROJECT_PATH/server/" 2>/dev/null || {
+    mkdir -p "$NUXT_PROJECT_PATH/server"
+    cp -r ../frontend-integration/server/* "$NUXT_PROJECT_PATH/server/"
+}
+
+print_status "📁 Copying TypeScript types..."
+cp -r ../frontend-integration/types/ "$NUXT_PROJECT_PATH/types/" 2>/dev/null || {
+    mkdir -p "$NUXT_PROJECT_PATH/types"
+    cp -r ../frontend-integration/types/* "$NUXT_PROJECT_PATH/types/"
+}
+
+print_status "📁 Copying Vue.js components..."
+cp -r ../frontend-integration/components/ "$NUXT_PROJECT_PATH/components/" 2>/dev/null || {
+    mkdir -p "$NUXT_PROJECT_PATH/components"
+    cp -r ../frontend-integration/components/* "$NUXT_PROJECT_PATH/components/"
+}
+
+print_status "📁 Copying composables..."
+cp -r ../frontend-integration/composables/ "$NUXT_PROJECT_PATH/composables/" 2>/dev/null || {
+    mkdir -p "$NUXT_PROJECT_PATH/composables"
+    cp -r ../frontend-integration/composables/* "$NUXT_PROJECT_PATH/composables/"
+}
+
+print_success "✅ Frontend integration installed successfully!"
+print_status ""
+print_status "📋 Next steps:"
+print_status "1. Install dependencies: npm install mjml @sendgrid/mail handlebars @directus/sdk"
+print_status "2. Update your nuxt.config.ts with runtime configuration"
+print_status "3. Set up environment variables in .env"
+print_status "4. See frontend-integration/README.md for detailed setup"
+EOF
+
+    chmod +x scripts/install-frontend.sh
+    print_success "✅ Frontend installer script created"
 }
 
 create_complete_installer() {

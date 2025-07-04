@@ -1,8 +1,6 @@
 # Complete Modular Newsletter System for Directus 11 v5.0
 
-A complete modular newsletter system for Directus 11 with MJML email templates, SendGrid integration, and enterprise-ready features. Easily add powerful newsletter functionality to existing Directus instances with perfect UX and advanced capabilities.
-
-![Newsletter Feature Demo](https://via.placeholder.com/800x400?text=Enhanced+Newsletter+System+v5.0)
+A complete modular newsletter system for Directus 11 with MJML email templates, SendGrid integration, and enhanced UX features. Easily add powerful newsletter functionality to existing Directus instances with perfect blocks relationship.
 
 ## ✨ Enhanced Features v5.0
 
@@ -18,17 +16,14 @@ A complete modular newsletter system for Directus 11 with MJML email templates, 
 - **✅ Perfect Blocks Relationship** - Proper O2M relationship with drag-and-drop UX
 - **👥 Enhanced Subscriber Management** - Preferences, segmentation, engagement tracking
 - **🏷️ Categories & Tags** - Advanced organization and filtering
-- **🧪 A/B Testing** - Split test subject lines and content optimization
 - **📊 Advanced Analytics** - Performance tracking and insights
-- **⚡ Approval Workflow** - Team collaboration and review process
 
 ### 🔧 **Technical Excellence**
 - **Individual field structure** instead of complex JSON (better UX)
 - **Enhanced error handling** and recovery mechanisms
 - **Complete TypeScript integration** with proper types
-- **Vue.js components** for template selection and content management
 - **Debug tools** for comprehensive troubleshooting
-- **Flow connection fixer** for automated maintenance
+- **Modular deployment** for flexible installation
 
 ## 🚀 Quick Start
 
@@ -57,9 +52,6 @@ curl -fsSL https://raw.githubusercontent.com/hue-studios/directus-newsletter-ins
 
 # Debug complete installation
 ./deploy.sh debug https://directus.com admin@example.com password https://frontend.com
-
-# Fix flow connections
-./deploy.sh fix-flow https://directus.com admin@example.com password
 ```
 
 ## 📦 What Gets Installed
@@ -74,26 +66,21 @@ curl -fsSL https://raw.githubusercontent.com/hue-studios/directus-newsletter-ins
 - **block_types** - Available MJML block types with categories
 - **newsletter_sends** - Send tracking with advanced analytics
 
-### Enhanced Block Types (6 included)
-- **Hero Section** - Large header with title, subtitle, image, and CTA button
+### Enhanced Block Types (4 included)
+- **Hero Section** - Large header with title, subtitle, and CTA button
 - **Text Block** - Rich text content with formatting options
 - **Image Block** - Images with captions, links, and accessibility
 - **Button** - Customizable call-to-action buttons
-- **Two Column Layout** - Side-by-side content sections
-- **Divider** - Horizontal line separators with styling
 
 ### Frontend Integration
 - **Enhanced MJML Compilation** - `/api/newsletter/compile-mjml`
 - **Advanced Email Sending** - `/api/newsletter/send`
-- **Vue.js Components** - Template browser, content library, analytics
 - **TypeScript Types** - Complete type definitions for all collections
-- **Composables** - Newsletter management utilities
 
 ### Modular Tools
 - **Complete installer** with enhanced features and proper relationships
 - **Debug tools** for comprehensive troubleshooting and testing
-- **Flow connection fixer** for automated maintenance
-- **Frontend integration package** with Vue.js components
+- **Frontend integration package** with enhanced endpoints
 
 ## 🏗️ Modular Architecture Benefits
 
@@ -163,8 +150,6 @@ npm install -D @types/mjml
 # Complete frontend integration package
 cp -r /opt/newsletter-feature/frontend-integration/server/ ./server/
 cp -r /opt/newsletter-feature/frontend-integration/types/ ./types/
-cp -r /opt/newsletter-feature/frontend-integration/components/ ./components/
-cp -r /opt/newsletter-feature/frontend-integration/composables/ ./composables/
 ```
 
 **Update nuxt.config.ts:**
@@ -209,15 +194,6 @@ NUXT_SITE_URL=https://yoursite.com
 curl -X POST https://yoursite.com/api/newsletter/compile-mjml \
   -H "Authorization: Bearer your-webhook-secret" \
   -d '{"newsletter_id": 1}'
-
-# Expected enhanced response:
-# {
-#   "success": true,
-#   "message": "MJML compiled successfully with enhanced features",
-#   "blocks_compiled": 3,
-#   "newsletter_category": "company",
-#   "has_template": true
-# }
 ```
 
 ## 🎨 Enhanced Usage
@@ -239,42 +215,8 @@ const block = {
   button_text: 'Read More',
   button_url: 'https://example.com',
   background_color: '#f8f9fa',
-  text_color: '#333333',
-  text_align: 'center',
-  padding: '40px 0'
+  text_align: 'center'
 }
-```
-
-### Template System Usage
-
-```javascript
-// Create newsletter from template
-const { createFromTemplate } = useNewsletter()
-
-const newsletter = await createFromTemplate(selectedTemplate, {
-  title: 'Weekly Update - March 2024',
-  subject_line: 'Your weekly dose of company news',
-  from_name: 'Company Team',
-  from_email: 'news@company.com'
-})
-```
-
-### Enhanced Analytics
-
-```sql
--- Performance by newsletter category and template
-SELECT 
-  n.category,
-  nt.name as template_name,
-  AVG(ns.open_rate) as avg_open_rate,
-  AVG(ns.click_rate) as avg_click_rate,
-  COUNT(*) as total_sends
-FROM newsletters n
-LEFT JOIN newsletter_templates nt ON n.template_id = nt.id
-JOIN newsletter_sends ns ON n.id = ns.newsletter_id
-WHERE ns.status = 'sent'
-GROUP BY n.category, nt.id, nt.name
-ORDER BY avg_open_rate DESC;
 ```
 
 ## 🔧 Modular Commands Reference
@@ -295,7 +237,7 @@ Installs 8 enhanced collections with proper relationships and sample data.
 ```bash
 ./deploy.sh frontend [nuxt-project-path]
 ```
-Installs complete frontend integration with Vue.js components and TypeScript types.
+Installs complete frontend integration with enhanced endpoints and TypeScript types.
 
 ### Flow Command
 ```bash
@@ -309,33 +251,20 @@ Installs enhanced automation flow with advanced error handling and analytics.
 ```
 Comprehensive debugging of all components, connections, and configurations.
 
-### Fix Flow Command
-```bash
-./deploy.sh fix-flow <directus-url> <email> <password>
-```
-Automatically repairs flow operation connections and validates functionality.
-
 ## 🚨 Troubleshooting
 
 ### Common Issues
 
 **Perfect Blocks Relationship Not Working:**
 ```bash
-# Fix relationships and connections
-./deploy.sh fix-flow https://admin.yoursite.com admin@example.com password
-
-# Verify relationship exists
-curl -H "Authorization: Bearer token" \
-  "https://admin.site.com/relations" | grep newsletter_blocks
+# Re-run installation to ensure proper relationships
+./deploy.sh install https://admin.yoursite.com admin@example.com password
 ```
 
 **Enhanced Collections Missing:**
 ```bash
 # Run comprehensive debug
 ./deploy.sh debug https://admin.yoursite.com admin@example.com password
-
-# Re-run installation
-./deploy.sh install https://admin.yoursite.com admin@example.com password
 ```
 
 **Frontend Integration Issues:**
@@ -343,7 +272,6 @@ curl -H "Authorization: Bearer token" \
 # Check integration files
 ls -la /path/to/nuxt/server/api/newsletter/
 ls -la /path/to/nuxt/types/
-ls -la /path/to/nuxt/components/newsletter/
 
 # Test endpoints
 curl -X POST http://localhost:3000/api/newsletter/compile-mjml \
@@ -357,44 +285,16 @@ curl -X POST http://localhost:3000/api/newsletter/compile-mjml \
 # Test all connections and features
 ./deploy.sh debug https://admin.site.com admin@site.com password https://site.com
 
-# Fix specific flow issues  
-./deploy.sh fix-flow https://admin.site.com admin@site.com password
-
 # Test individual components
 ./deploy.sh frontend /path/to/nuxt  # Test frontend only
 ```
 
 ## 📚 Documentation
 
-- [**Enhanced Installation Guide**](docs/INSTALLATION.md) - Complete step-by-step setup
-- [**Enhanced Troubleshooting Guide**](docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [**Enhanced Flow Setup Guide**](docs/ENHANCED_FLOW_SETUP.md) - Advanced flow configuration
-- [**Frontend Integration Guide**](frontend-integration/README.md) - Complete frontend setup
-- [**Contributing Guide**](docs/CONTRIBUTING.md) - How to contribute to the project
-
-## 🔄 Client Deployment Workflow
-
-### For Agencies Managing Multiple Clients
-
-**Modular client deployment:**
-```bash
-# Set up client-specific deployment
-CLIENT_NAME="acme-corp"
-DIRECTUS_URL="https://acme-admin.com"
-
-# Create client directory
-mkdir -p "/opt/clients/$CLIENT_NAME"
-cd "/opt/clients/$CLIENT_NAME"
-
-# Deploy enhanced newsletter system
-curl -fsSL https://raw.githubusercontent.com/hue-studios/directus-newsletter-installer/main/deploy.sh | bash -s full \
-  "$DIRECTUS_URL" "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "https://acme.com"
-
-# Copy frontend integration to client's Nuxt project
-./deploy.sh frontend "/path/to/client/nuxt/project"
-
-# Configure client-specific branding and settings
-```
+For detailed guides and troubleshooting, see the `/docs` folder:
+- Installation guides
+- Configuration examples
+- Troubleshooting solutions
 
 ## 🌟 What's New in v5.0
 
@@ -407,32 +307,23 @@ curl -fsSL https://raw.githubusercontent.com/hue-studios/directus-newsletter-ins
 ### ✅ Perfect Blocks Relationship
 - **Individual fields** instead of complex JSON structure
 - **Drag-and-drop interface** with visual sorting
-- **Enhanced field interfaces** (color picker, rich text, etc.)
+- **Enhanced field interfaces** (color picker, text input, etc.)
 - **Real-time preview** of block content
 
 ### 📋 Template System
 - **Reusable templates** with pre-configured blocks
 - **Template categories** and organization
 - **Usage tracking** and analytics
-- **Dynamic variables** with Handlebars
 
 ### 📚 Content Library
 - **Reusable content blocks** for consistency
 - **Global vs. personal** content sharing
 - **Category organization** and tagging
-- **Usage analytics** and tracking
-
-### 🧪 Advanced Features
-- **A/B testing** with performance tracking
-- **Approval workflow** for team collaboration
-- **Enhanced analytics** with detailed metrics
-- **Advanced segmentation** and personalization
 
 ## 🎯 Use Cases
 
 ### Marketing Teams
 - Create consistent branded newsletters with templates
-- A/B test subject lines and content for optimization
 - Track performance with detailed analytics
 - Collaborate with approval workflows
 
@@ -472,25 +363,15 @@ We welcome contributions! The modular v5.0 architecture makes it easier than eve
 3. Test changes with `./deploy.sh debug`
 4. Submit pull request with detailed description
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed guidelines.
-
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Directus](https://directus.io/) - Headless CMS platform
-- [MJML](https://mjml.io/) - Email framework  
-- [SendGrid](https://sendgrid.com/) - Email delivery service
-- [Nuxt.js](https://nuxt.com/) - Vue.js framework
 
 ## 💬 Support
 
 - 📧 **Email**: support@youragency.com
 - 🐛 **Issues**: [GitHub Issues](https://github.com/hue-studios/directus-newsletter-installer/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/hue-studios/directus-newsletter-installer/discussions)
-- 📖 **Documentation**: [Complete Guides](docs/)
 
 ---
 
@@ -503,9 +384,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **✅ Perfect UX** with individual block fields and drag-and-drop
 - **📋 Template System** for faster creation and consistency  
 - **📚 Content Library** for reusable components
-- **🧪 A/B Testing** for continuous optimization
 - **📊 Advanced Analytics** for data-driven decisions
-- **⚡ Team Collaboration** with approval workflows
 - **🔧 Debug Tools** for comprehensive maintenance
 
 ### 🚀 Get Started Now:
