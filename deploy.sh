@@ -4551,19 +4551,6 @@ install_collections() {
     bash "$SCRIPTS_DIR/install-collections.sh" "$@"
 }
 
-install_collections() {
-    print_status "📦 Installing enhanced collections..."
-    
-    # CRITICAL: Install dependencies FIRST before doing anything else
-    if ! install_dependencies; then
-        print_error "❌ Cannot proceed without dependencies"
-        exit 1
-    fi
-    
-    # Now run the collections installer
-    bash "$SCRIPTS_DIR/install-collections.sh" "$@"
-}
-
 install_frontend() {
     print_status "🎨 Installing frontend integration..."
     bash "$SCRIPTS_DIR/install-frontend.sh" "$@"
