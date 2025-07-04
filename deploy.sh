@@ -292,7 +292,7 @@ print_status "   Frontend: ${FRONTEND_URL:-'Not provided'}"
 
 # Check dependencies
 check_node || exit 1
-install_dependencies
+install_dependencies || exit 1
 
 # Run the enhanced newsletter installer
 cd "$DEPLOYMENT_DIR"
