@@ -162,11 +162,65 @@ check_node() {
 }
 
 install_dependencies() {
-    if [ -f "../package.json" ]; then
-        print_status "📦 Installing Node.js dependencies..."
-        cd .. && npm install && cd scripts
-        print_success "✅ Dependencies installed"
+    local deployment_dir="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
+    
+    print_status "📦 Installing Node.js dependencies..."
+    
+    # Save current directory
+    local current_dir=$(pwd)
+    
+    # Check if package.json exists
+    if [ ! -f "$deployment_dir/package.json" ]; then
+        print_error "❌ package.json not found in $deployment_dir"
+        print_status "   Run './deploy.sh setup' first to create the modular environment"
+        return 1
     fi
+    
+    # Navigate to deployment directory
+    cd "$deployment_dir"
+    
+    # Check if dependencies are already installed and working
+    if [ -d "node_modules" ] && [ -d "node_modules/@directus" ] && [ -d "node_modules/mjml" ]; then
+        print_success "✅ Dependencies already installed"
+        cd "$current_dir"
+        return 0
+    fi
+    
+    print_status "   Installing npm packages..."
+    
+    # Install dependencies with error handling
+    if npm install --no-audit --no-fund; then
+        print_success "✅ Dependencies installed successfully"
+        
+        # Verify critical dependencies are installed
+        local missing_deps=()
+        for dep in "@directus/sdk" "mjml" "handlebars" "@sendgrid/mail"; do
+            if [ ! -d "node_modules/$dep" ]; then
+                missing_deps+=("$dep")
+            fi
+        done
+        
+        if [ ${#missing_deps[@]} -gt 0 ]; then
+            print_error "❌ Missing critical dependencies: ${missing_deps[*]}"
+            cd "$current_dir"
+            return 1
+        fi
+        
+        print_success "✅ All critical dependencies verified"
+    else
+        print_error "❌ Failed to install dependencies"
+        print_status ""
+        print_status "💡 Try manual installation:"
+        print_status "   cd $deployment_dir"
+        print_status "   rm -rf node_modules package-lock.json"
+        print_status "   npm install"
+        cd "$current_dir"
+        return 1
+    fi
+    
+    # Return to original directory
+    cd "$current_dir"
+    return 0
 }
 
 validate_url() {
@@ -4494,6 +4548,19 @@ show_structure() {
 # Individual installation functions
 install_collections() {
     print_status "📦 Installing enhanced collections..."
+    bash "$SCRIPTS_DIR/install-collections.sh" "$@"
+}
+
+install_collections() {
+    print_status "📦 Installing enhanced collections..."
+    
+    # CRITICAL: Install dependencies FIRST before doing anything else
+    if ! install_dependencies; then
+        print_error "❌ Cannot proceed without dependencies"
+        exit 1
+    fi
+    
+    # Now run the collections installer
     bash "$SCRIPTS_DIR/install-collections.sh" "$@"
 }
 
