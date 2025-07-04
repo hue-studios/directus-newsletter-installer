@@ -429,7 +429,7 @@ class CompleteNewsletterInstaller {
         await new Promise(resolve => setTimeout(resolve, 500));
         return true;
       } catch (error) {
-        if (error.message.includes('already exists') || error.message.includes('duplicate')) {
+        if (error.message?.includes('already exists') || error.message?.includes('duplicate')) {
           console.log(`⏭️  Field ${field.field} already exists`);
           return true;
         }
@@ -460,7 +460,7 @@ class CompleteNewsletterInstaller {
       await new Promise(resolve => setTimeout(resolve, 1000));
       return true;
     } catch (error) {
-      if (error.message.includes('already exists')) {
+      if (error.message?.includes('already exists')) {
         console.log(`⏭️  ${collection} collection already exists`);
         return true;
       }
@@ -2007,7 +2007,7 @@ class CompleteNewsletterInstaller {
         console.log(`✅ Created relation: ${relation.collection}.${relation.field} → ${relation.related_collection}`);
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
-        if (error.message.includes('already exists')) {
+        if (error.message?.includes('already exists')) {
           console.log(`⏭️  Relation already exists: ${relation.collection}.${relation.field} → ${relation.related_collection}`);
         } else {
           console.error(`❌ Failed to create relation: ${relation.collection}.${relation.field}`, error.message);
