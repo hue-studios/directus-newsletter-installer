@@ -241,7 +241,7 @@ check_node || exit 1
 install_dependencies
 
 # Run the enhanced newsletter installer
-cd ..
+cd "$DEPLOYMENT_DIR"
 node installers/newsletter-installer.js "$DIRECTUS_URL" "$EMAIL" "$PASSWORD" "$FRONTEND_URL" "$WEBHOOK_SECRET"
 
 print_success "✅ Enhanced collections installation completed"
@@ -260,6 +260,9 @@ create_install_frontend_script() {
 
 set -e
 source "$(dirname "$0")/common.sh"
+
+# Set deployment directory
+DEPLOYMENT_DIR="${NEWSLETTER_DEPLOY_DIR:-/opt/newsletter-feature}"
 
 NUXT_PROJECT_PATH="$1"
 
